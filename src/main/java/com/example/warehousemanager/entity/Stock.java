@@ -1,5 +1,7 @@
 package com.example.warehousemanager.entity;
 
+import lombok.Getter;
+import lombok.Setter;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -11,6 +13,8 @@ import jakarta.persistence.UniqueConstraint;
 @Table(uniqueConstraints = {
     @UniqueConstraint(columnNames = {"warehouse_id", "product_id"})
 })
+@Getter
+@Setter
 public class Stock {
     @Id @GeneratedValue
     private Long id;
