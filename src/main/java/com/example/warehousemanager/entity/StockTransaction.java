@@ -25,6 +25,8 @@ public class StockTransaction {
 
     private String type;
 
+    private Long warehouseId;
+
     private Long fromWarehouseId;
     private Long toWarehouseId;
 

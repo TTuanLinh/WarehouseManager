@@ -15,6 +15,55 @@ import jakarta.transaction.Transactional;
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
+    @Transactional
+    public void addStock(Long productId, Long warehouseId, int quantity) {
+        Stock stock = stockRepository
+            .findByWarehouseIdAndProductId(warehouseId, productId)
+            .orElseGet(() -> {
+                Stock s = new Stock();
+    
+                Warehouse w = new Warehouse();
+                w.setId(warehouseId);
+    
+                Product p = new Product();
+                p.setId(productId);
+    
+                s.setWarehouse(w);
+                s.setProduct(p);
+                s.setQuantity(0);
+    
+                return s;
+            });
+    
+        stock.setQuantity(stock.getQuantity() + quantity);
+    
+        stockRepository.save(stock);
+        StockTransaction tx = new StockTransaction();
+        tx.setProduct(new Product(productId));
+        tx.setQuantity(quantity);
+        tx.setType("IMPORT");
+        tx.setWarehouseId(warehouseId);
+        tx.setCreatedAt(LocalDateTime.now());
+        stockTransactionRepository.save(tx);
+    }
+
+    @Transactional
+    public void removeStock(Long productId, Long warehouseId, int quantity) {
+        Stock stock = stockRepository.findByWarehouseIdAndProductId(warehouseId, productId)
+            .orElseThrow(() -> new RuntimeException("Không tìm thấy stock"));
+        if (stock.getQuantity() < quantity) {
+            throw new RuntimeException("Không đủ hàng");
+        }
+        stock.setQuantity(stock.getQuantity() - quantity);
+        stockRepository.save(stock);
+        StockTransaction tx = new StockTransaction();
+        tx.setProduct(new Product(productId));
+        tx.setQuantity(quantity);
+        tx.setType("EXPORT");
+        tx.setWarehouseId(warehouseId);
+        tx.setCreatedAt(LocalDateTime.now());
+        stockTransactionRepository.save(tx);
+    }
     private final StockRepository stockRepository;
     private final StockTransactionRepository stockTransactionRepository;
 
@@ -37,8 +86,15 @@ public class InventoryService {
             .findByWarehouseIdAndProductId(toWarehouse, productId)
             .orElseGet(() -> {
                 Stock s = new Stock();
-                s.setWarehouse(new Warehouse(toWarehouse));
-                s.setProduct(new Product(productId));
+                Warehouse w = new Warehouse();
+                w.setId(toWarehouse);
+                w.setName("Kho đích");
+                s.setWarehouse(w);
+                Product p = new Product();
+                p.setId(productId);
+                p.setName("Sản phẩm");
+                p.setSku("SKU123");
+                s.setProduct(p);
                 s.setQuantity(0);
                 return s;
             });
