@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.http.ResponseEntity;
 import com.example.warehousemanager.dto.InventoryRequest;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/inventory")
@@ -30,22 +31,14 @@ public class InventoryController {
     }
 
     @PostMapping("/import")
-    public ResponseEntity<?> importInventory(@RequestBody InventoryRequest req) {
-        inventoryService.addStock(
-            req.getProductId(),
-            req.getWarehouseId(),
-            req.getQuantity()
-        );  
-        return ResponseEntity.ok("Thêm hàng thành công");
+    public ResponseEntity<?> importInventory(@RequestBody List<InventoryRequest> requests) {
+        inventoryService.addStocks(requests);
+        return ResponseEntity.ok("Thêm nhiều sản phẩm thành công");
     }
 
     @PostMapping("/export")
-    public ResponseEntity<?> exportInventory(@RequestBody InventoryRequest req) {
-        inventoryService.removeStock(
-            req.getProductId(),
-            req.getWarehouseId(),
-            req.getQuantity()
-        );
-        return ResponseEntity.ok("Xóa hàng thành công");
+    public ResponseEntity<?> exportInventory(@RequestBody List<InventoryRequest> requests) {
+        inventoryService.removeStocks(requests);
+        return ResponseEntity.ok("Xóa nhiều sản phẩm thành công");
     }
 }

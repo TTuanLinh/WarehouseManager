@@ -8,15 +8,31 @@ import com.example.warehousemanager.entity.Stock;
 import com.example.warehousemanager.entity.Warehouse;
 import com.example.warehousemanager.entity.Product;
 import com.example.warehousemanager.entity.StockTransaction;
+import com.example.warehousemanager.dto.InventoryRequest;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import jakarta.transaction.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
+    private final StockRepository stockRepository;
+    private final StockTransactionRepository stockTransactionRepository;
+
     @Transactional
     public void addStock(Long productId, Long warehouseId, int quantity) {
+        doAddStock(productId, warehouseId, quantity);
+    }
+
+    @Transactional
+    public void addStocks(List<InventoryRequest> requests) {
+        for (InventoryRequest request : requests) {
+            doAddStock(request.getProductId(), request.getWarehouseId(), request.getQuantity());
+        }
+    }
+
+    private void doAddStock(Long productId, Long warehouseId, int quantity) {
         Stock stock = stockRepository
             .findByWarehouseIdAndProductId(warehouseId, productId)
             .orElseGet(() -> {
@@ -49,6 +65,17 @@ public class InventoryService {
 
     @Transactional
     public void removeStock(Long productId, Long warehouseId, int quantity) {
+        doRemoveStock(productId, warehouseId, quantity);
+    }
+
+    @Transactional
+    public void removeStocks(List<InventoryRequest> requests) {
+        for (InventoryRequest request : requests) {
+            doRemoveStock(request.getProductId(), request.getWarehouseId(), request.getQuantity());
+        }
+    }
+
+    private void doRemoveStock(Long productId, Long warehouseId, int quantity) {
         Stock stock = stockRepository.findByWarehouseIdAndProductId(warehouseId, productId)
             .orElseThrow(() -> new RuntimeException("Không tìm thấy stock"));
         if (stock.getQuantity() < quantity) {
@@ -64,9 +91,6 @@ public class InventoryService {
         tx.setCreatedAt(LocalDateTime.now());
         stockTransactionRepository.save(tx);
     }
-    private final StockRepository stockRepository;
-    private final StockTransactionRepository stockTransactionRepository;
-
     @Transactional
     public void transfer(Long productId, Long fromWarehouse, Long toWarehouse, int quantity) {
 
