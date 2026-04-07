@@ -33,7 +33,7 @@ public class WarehouseController {
 
     @GetMapping
     public ResponseEntity<List<Warehouse>> getAllWarehouses() {
-        List<Warehouse> warehouses = warehouseService.getAllWarehouses();
+        List<Warehouse> warehouses = warehouseService.getMyWarehouses();
         return ResponseEntity.ok(warehouses);
     }
 }
