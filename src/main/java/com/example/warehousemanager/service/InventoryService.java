@@ -26,9 +26,9 @@ public class InventoryService {
     }
 
     @Transactional
-    public void addStocks(List<InventoryRequest> requests) {
+    public void addStocks(Long warehouseId, List<InventoryRequest> requests) {
         for (InventoryRequest request : requests) {
-            doAddStock(request.getProductId(), request.getWarehouseId(), request.getQuantity());
+            doAddStock(request.getProductId(), warehouseId, request.getQuantity());
         }
     }
 
@@ -69,9 +69,9 @@ public class InventoryService {
     }
 
     @Transactional
-    public void removeStocks(List<InventoryRequest> requests) {
+    public void removeStocks(Long warehouseId, List<InventoryRequest> requests) {
         for (InventoryRequest request : requests) {
-            doRemoveStock(request.getProductId(), request.getWarehouseId(), request.getQuantity());
+            doRemoveStock(request.getProductId(), warehouseId, request.getQuantity());
         }
     }
 
