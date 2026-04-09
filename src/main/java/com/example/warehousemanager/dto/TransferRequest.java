@@ -9,7 +9,6 @@ import lombok.Data;
 @Data
 public class TransferRequest {
     private Long productId;
-    private Long fromWarehouse;
     private Long toWarehouse;
     private int quantity;
 }

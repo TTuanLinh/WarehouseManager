@@ -4,29 +4,37 @@ import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 import com.example.warehousemanager.repository.StockRepository;
 import com.example.warehousemanager.repository.StockTransactionRepository;
+import com.example.warehousemanager.repository.UserWarehouseRepository;
 import com.example.warehousemanager.entity.Stock;
 import com.example.warehousemanager.entity.Warehouse;
 import com.example.warehousemanager.entity.Product;
 import com.example.warehousemanager.entity.StockTransaction;
 import com.example.warehousemanager.dto.InventoryRequest;
+import com.example.warehousemanager.security.CurrentUserService;
 import java.time.LocalDateTime;
 import java.util.List;
 
 import jakarta.transaction.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
     private final StockRepository stockRepository;
     private final StockTransactionRepository stockTransactionRepository;
+    private final UserWarehouseRepository userWarehouseRepository;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public void addStock(Long productId, Long warehouseId, int quantity) {
+        assertWarehouseAccess(warehouseId);
         doAddStock(productId, warehouseId, quantity);
     }
 
     @Transactional
     public void addStocks(Long warehouseId, List<InventoryRequest> requests) {
+        assertWarehouseAccess(warehouseId);
         for (InventoryRequest request : requests) {
             doAddStock(request.getProductId(), warehouseId, request.getQuantity());
         }
@@ -65,11 +73,13 @@ public class InventoryService {
 
     @Transactional
     public void removeStock(Long productId, Long warehouseId, int quantity) {
+        assertWarehouseAccess(warehouseId);
         doRemoveStock(productId, warehouseId, quantity);
     }
 
     @Transactional
     public void removeStocks(Long warehouseId, List<InventoryRequest> requests) {
+        assertWarehouseAccess(warehouseId);
         for (InventoryRequest request : requests) {
             doRemoveStock(request.getProductId(), warehouseId, request.getQuantity());
         }
@@ -93,6 +103,8 @@ public class InventoryService {
     }
     @Transactional
     public void transfer(Long productId, Long fromWarehouse, Long toWarehouse, int quantity) {
+        assertWarehouseAccess(fromWarehouse);
+        assertWarehouseAccess(toWarehouse);
 
         Stock fromStock = stockRepository
             .findByWarehouseIdAndProductId(fromWarehouse, productId)
@@ -138,5 +150,13 @@ public class InventoryService {
         tx.setCreatedAt(LocalDateTime.now());
 
         stockTransactionRepository.save(tx);
+    }
+
+    private void assertWarehouseAccess(Long warehouseId) {
+        Long currentUserId = currentUserService.getCurrentUserId();
+        boolean hasAccess = userWarehouseRepository.existsByUserIdAndWarehouseId(currentUserId, warehouseId);
+        if (!hasAccess) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this warehouse");
+        }
     }
 }

@@ -18,12 +18,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 public class InventoryController {
     private final InventoryService inventoryService;
 
-    @PostMapping("/transfer")
-    public ResponseEntity<?> transfer(@RequestBody TransferRequest req) {
+    @PostMapping("/{warehouseId}/transfer")
+    public ResponseEntity<?> transfer(
+        @PathVariable Long warehouseId,
+        @RequestBody TransferRequest req
+    ) {
 
         inventoryService.transfer(
             req.getProductId(),
-            req.getFromWarehouse(),
+            warehouseId,
             req.getToWarehouse(),
             req.getQuantity()
         );

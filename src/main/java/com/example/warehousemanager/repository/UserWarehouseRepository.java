@@ -13,4 +13,6 @@ public interface UserWarehouseRepository extends JpaRepository<UserWarehouse, Lo
     List<UserWarehouse> findByUserIdAndWarehouseId(Long userId, Long warehouseId);
 
     List<UserWarehouse> findByUserIdAndWarehouseIdAndRole(Long userId, Long warehouseId, String role);
+
+    boolean existsByUserIdAndWarehouseId(Long userId, Long warehouseId);
 }
