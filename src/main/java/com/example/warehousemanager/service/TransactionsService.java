@@ -5,10 +5,13 @@ import lombok.RequiredArgsConstructor;
 import com.example.warehousemanager.repository.StockTransactionRepository;
 import com.example.warehousemanager.repository.UserWarehouseRepository;
 import com.example.warehousemanager.entity.StockTransaction;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.example.warehousemanager.security.CurrentUserService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -18,26 +21,21 @@ public class TransactionsService {
     private final UserWarehouseRepository userWarehouseRepository;
     private final CurrentUserService currentUserService;
 
-    public List<StockTransaction> getAllTransactions() {
+    public Page<StockTransaction> getTransactions(Long productId, Long warehouseId, Pageable pageable) {
         Long currentUserId = currentUserService.getCurrentUserId();
         Set<Long> allowedWarehouseIds = userWarehouseRepository.findByUserId(currentUserId)
             .stream()
             .map(uw -> uw.getWarehouse().getId())
             .collect(Collectors.toSet());
 
-        return stockTransactionRepository.findAll()
-            .stream()
-            .filter(tx -> isVisible(tx, allowedWarehouseIds))
-            .collect(Collectors.toList());
-    }
+        if (allowedWarehouseIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
 
-    private boolean isVisible(StockTransaction tx, Set<Long> allowedWarehouseIds) {
-        if (tx.getWarehouseId() != null) {
-            return allowedWarehouseIds.contains(tx.getWarehouseId());
+        if (warehouseId != null && !allowedWarehouseIds.contains(warehouseId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this warehouse");
         }
-        if (tx.getFromWarehouseId() != null && allowedWarehouseIds.contains(tx.getFromWarehouseId())) {
-            return true;
-        }
-        return tx.getToWarehouseId() != null && allowedWarehouseIds.contains(tx.getToWarehouseId());
+
+        return stockTransactionRepository.findFiltered(allowedWarehouseIds, productId, warehouseId, pageable);
     }
 }
