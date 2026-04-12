@@ -10,9 +10,14 @@ import com.example.warehousemanager.entity.Warehouse;
 import com.example.warehousemanager.entity.Product;
 import com.example.warehousemanager.entity.StockTransaction;
 import com.example.warehousemanager.dto.InventoryRequest;
+import com.example.warehousemanager.dto.StockLevelDto;
+import com.example.warehousemanager.dto.WarehouseStockLineDto;
+import com.example.warehousemanager.dto.SetStockQuantityRequest;
 import com.example.warehousemanager.security.CurrentUserService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.transaction.Transactional;
 import org.springframework.http.HttpStatus;
@@ -158,5 +163,96 @@ public class InventoryService {
         if (!hasAccess) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this warehouse");
         }
+    }
+
+    @Transactional
+    public void removeProductLineFromWarehouse(Long warehouseId, Long productId) {
+        assertWarehouseAccess(warehouseId);
+        Stock stock = stockRepository
+            .findByWarehouseIdAndProductId(warehouseId, productId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không có dòng tồn kho này"));
+        int qty = stock.getQuantity() != null ? stock.getQuantity() : 0;
+        stockRepository.delete(stock);
+        StockTransaction tx = new StockTransaction();
+        tx.setProduct(new Product(productId));
+        tx.setQuantity(qty);
+        tx.setType("REMOVAL");
+        tx.setWarehouseId(warehouseId);
+        tx.setCreatedAt(LocalDateTime.now());
+        stockTransactionRepository.save(tx);
+    }
+
+    public List<WarehouseStockLineDto> getWarehouseStocks(Long warehouseId) {
+        assertWarehouseAccess(warehouseId);
+        return stockRepository.listLinesForWarehouse(warehouseId).stream()
+            .map(p -> new WarehouseStockLineDto(
+                p.getProductId(),
+                p.getProductName() != null ? p.getProductName() : "",
+                p.getSku() != null ? p.getSku() : "",
+                p.getQuantity() != null ? p.getQuantity() : 0
+            ))
+            .toList();
+    }
+
+    @Transactional
+    public void setStockQuantity(Long warehouseId, SetStockQuantityRequest req) {
+        assertWarehouseAccess(warehouseId);
+        Long productId = req.getProductId();
+        int newQuantity = req.getQuantity();
+        if (productId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productId is required");
+        }
+        if (newQuantity < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "quantity cannot be negative");
+        }
+
+        Stock stock = stockRepository
+            .findByWarehouseIdAndProductId(warehouseId, productId)
+            .orElseGet(() -> {
+                Stock s = new Stock();
+                Warehouse w = new Warehouse();
+                w.setId(warehouseId);
+                Product p = new Product();
+                p.setId(productId);
+                s.setWarehouse(w);
+                s.setProduct(p);
+                s.setQuantity(0);
+                return s;
+            });
+
+        int oldQuantity = stock.getQuantity() != null ? stock.getQuantity() : 0;
+        int delta = newQuantity - oldQuantity;
+        stock.setQuantity(newQuantity);
+        stockRepository.save(stock);
+
+        if (delta != 0) {
+            StockTransaction tx = new StockTransaction();
+            tx.setProduct(new Product(productId));
+            tx.setQuantity(delta);
+            tx.setType("ADJUSTMENT");
+            tx.setWarehouseId(warehouseId);
+            tx.setCreatedAt(LocalDateTime.now());
+            stockTransactionRepository.save(tx);
+        }
+    }
+
+    public List<StockLevelDto> getLowStock(int threshold) {
+        Long currentUserId = currentUserService.getCurrentUserId();
+        Set<Long> warehouseIds = userWarehouseRepository.findByUserId(currentUserId)
+            .stream()
+            .map(uw -> uw.getWarehouse().getId())
+            .collect(Collectors.toSet());
+        if (warehouseIds.isEmpty()) {
+            return List.of();
+        }
+        return stockRepository.findLowStock(warehouseIds, threshold).stream()
+            .map(s -> new StockLevelDto(
+                s.getWarehouse().getId(),
+                s.getWarehouse().getName(),
+                s.getProduct().getId(),
+                s.getProduct().getName(),
+                s.getQuantity()
+            ))
+            .toList();
     }
 }

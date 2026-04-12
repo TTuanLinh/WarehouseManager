@@ -11,12 +11,28 @@ import org.springframework.http.ResponseEntity;
 import com.example.warehousemanager.dto.InventoryRequest;
 import java.util.List;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import com.example.warehousemanager.dto.StockLevelDto;
+import com.example.warehousemanager.dto.WarehouseStockLineDto;
+import com.example.warehousemanager.dto.SetStockQuantityRequest;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 @RestController
 @RequestMapping("/api/inventory")
 @RequiredArgsConstructor
 public class InventoryController {
     private final InventoryService inventoryService;
+
+    /** Literal path first so it is never mistaken for /{warehouseId}/... */
+    @GetMapping("/low-stock")
+    public ResponseEntity<List<StockLevelDto>> lowStock(
+        @RequestParam(name = "threshold", defaultValue = "10") int threshold
+    ) {
+        return ResponseEntity.ok(inventoryService.getLowStock(threshold));
+    }
 
     @PostMapping("/{warehouseId}/transfer")
     public ResponseEntity<?> transfer(
@@ -50,5 +66,40 @@ public class InventoryController {
     ) {
         inventoryService.removeStocks(warehouseId, requests);
         return ResponseEntity.ok("Xóa nhiều sản phẩm thành công");
+    }
+
+    @GetMapping("/{warehouseId}/stocks")
+    public ResponseEntity<List<WarehouseStockLineDto>> warehouseStocks(
+        @PathVariable Long warehouseId
+    ) {
+        return ResponseEntity.ok(inventoryService.getWarehouseStocks(warehouseId));
+    }
+
+    @DeleteMapping("/{warehouseId}/stock/{productId}")
+    public ResponseEntity<?> removeProductFromWarehouse(
+        @PathVariable Long warehouseId,
+        @PathVariable Long productId
+    ) {
+        inventoryService.removeProductLineFromWarehouse(warehouseId, productId);
+        return ResponseEntity.ok("Đã gỡ sản phẩm khỏi kho");
+    }
+
+    @PatchMapping("/{warehouseId}/stock")
+    public ResponseEntity<?> setStockQuantityPatch(
+        @PathVariable Long warehouseId,
+        @RequestBody SetStockQuantityRequest req
+    ) {
+        inventoryService.setStockQuantity(warehouseId, req);
+        return ResponseEntity.ok("Cập nhật tồn kho thành công");
+    }
+
+    /** Same as PATCH — some clients / proxies block PATCH and return 404. */
+    @PutMapping("/{warehouseId}/stock")
+    public ResponseEntity<?> setStockQuantityPut(
+        @PathVariable Long warehouseId,
+        @RequestBody SetStockQuantityRequest req
+    ) {
+        inventoryService.setStockQuantity(warehouseId, req);
+        return ResponseEntity.ok("Cập nhật tồn kho thành công");
     }
 }
