@@ -13,7 +13,8 @@ import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as transactionApi from '@/src/services/transactionService';
-import type { StockTransaction } from '@/src/types/models';
+import type { StockTransaction, Warehouse } from '@/src/types/models';
+import * as warehouseApi from '@/src/services/warehouseService';
 
 function formatTxType(type: string) {
   switch (type) {
@@ -40,6 +41,12 @@ function formatDate(iso: string) {
   }
 }
 
+function formatWarehouseInfo(item: StockTransaction, map: Record<number, string>) {
+  if (item.type !== 'TRANSFER') return null;
+
+  return `Từ: ${item.fromWarehouseId ? map[item.fromWarehouseId] : '—'} ➜ Sang: ${item.toWarehouseId ? map[item.toWarehouseId] : '—'}`;
+}
+
 export default function TransactionsScreen() {
   const { session } = useAuth();
   const colorScheme = useColorScheme();
@@ -47,10 +54,26 @@ export default function TransactionsScreen() {
   const [items, setItems] = useState<StockTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [warehouseMap, setWarehouseMap] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
-    const { data } = await transactionApi.getTransactions({ page: 0, size: 50 });
-    setItems(data.content ?? []);
+    try {
+      const [txResponse, whResponse] = await Promise.all([
+        transactionApi.getTransactions({ page: 0, size: 50 }),
+        warehouseApi.getWarehouses()
+      ]);
+
+      const map: Record<number, string> = {};
+      whResponse.data.forEach((wh: Warehouse) => {
+        map[wh.id] = wh.name;
+      });
+  
+      setWarehouseMap(map);
+      setItems(txResponse.data.content ?? []);
+    } catch (error) {
+      console.error("Lỗi khi tải dữ liệu:", error);
+      setItems([]);
+    }
   }, []);
 
   useFocusEffect(
@@ -114,11 +137,10 @@ export default function TransactionsScreen() {
       ListEmptyComponent={<Text style={styles.empty}>Chưa có giao dịch.</Text>}
       renderItem={({ item }) => (
         <View style={styles.row}>
-          <Text style={styles.title}>
-            {formatTxType(item.type)} · {item.product?.name ?? '—'}
-          </Text>
+          <Text style={styles.title}>{formatTxType(item.type)} · {item.product?.name ?? '—'}</Text>
           <Text style={styles.meta}>Số lượng: {item.quantity}</Text>
           <Text style={styles.meta}>{formatDate(item.createdAt)}</Text>
+          <Text style={styles.meta}>{formatWarehouseInfo(item, warehouseMap)}</Text>
         </View>
       )}
     />

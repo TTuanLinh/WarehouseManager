@@ -36,4 +36,10 @@ public class WarehouseController {
         List<Warehouse> warehouses = warehouseService.getMyWarehouses();
         return ResponseEntity.ok(warehouses);
     }
+
+    @GetMapping("/{id}/name")
+    public ResponseEntity<String> getWarehouseName(@PathVariable Long id) {
+        String name = warehouseService.getWarehouseName(id);
+        return ResponseEntity.ok(name);
+    }
 }

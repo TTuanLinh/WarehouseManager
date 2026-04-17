@@ -54,4 +54,8 @@ public class WarehouseService {
         return warehouseRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("Warehouse not found"));
     }
+
+    public String getWarehouseName(Long id) {
+        return getWarehouse(id).getName();
+    }
 }
