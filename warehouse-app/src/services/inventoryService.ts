@@ -24,3 +24,8 @@ export const setWarehouseStockQuantity = (
 /** Gỡ hoàn toàn dòng tồn (sản phẩm vẫn còn trong hệ thống). */
 export const removeStockLineFromWarehouse = (warehouseId: number, productId: number) =>
   api.delete(`/inventory/${warehouseId}/stock/${productId}`);
+
+export const transferStock = (
+  warehouseId: number,
+  body: { productId: number; toWarehouse: number; quantity: number }
+) => api.post(`/inventory/${warehouseId}/transfer`, body);

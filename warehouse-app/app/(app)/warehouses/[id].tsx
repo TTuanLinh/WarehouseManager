@@ -68,6 +68,12 @@ export default function WarehouseDetailScreen() {
   const [newProductName, setNewProductName] = useState('');
   const [newProductSku, setNewProductSku] = useState('');
   const [newProductQty, setNewProductQty] = useState('0');
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferLine, setTransferLine] = useState<WarehouseStockLine | null>(null);
+  const [transferToWarehouseId, setTransferToWarehouseId] = useState<number | null>(null);
+  const [transferQty, setTransferQty] = useState('');
+  const [transferTargets, setTransferTargets] = useState<Warehouse[]>([]);
+  const [transferTargetsLoad, setTransferTargetsLoad] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
 
   const swipeRefs = useRef<Map<number, Swipeable | null>>(new Map());
 
@@ -82,6 +88,13 @@ export default function WarehouseDetailScreen() {
     setNewProductSku('');
     setNewProductQty('0');
     setNewProductOpen(true);
+  }, []);
+
+  const openTransferModal = useCallback(() => {
+    setTransferLine(null);
+    setTransferToWarehouseId(null);
+    setTransferQty('');
+    setTransferOpen(true);
   }, []);
 
   const filteredLines = useMemo(() => {
@@ -161,6 +174,22 @@ export default function WarehouseDetailScreen() {
     if (!importOpen) return;
     void fetchProducts();
   }, [importOpen, fetchProducts]);
+
+  useEffect(() => {
+    if (!transferOpen) return;
+    setTransferTargetsLoad('loading');
+    warehouseApi
+      .getWarehouses()
+      .then(({ data }) => {
+        const filtered = (data ?? []).filter((w) => w.id !== warehouseId);
+        setTransferTargets(filtered);
+        setTransferTargetsLoad('ok');
+      })
+      .catch(() => {
+        setTransferTargets([]);
+        setTransferTargetsLoad('error');
+      });
+  }, [transferOpen, warehouseId]);
 
   const openAdjust = (line: WarehouseStockLine) => {
     setAdjustLine(line);
@@ -297,6 +326,39 @@ export default function WarehouseDetailScreen() {
     }
   };
 
+  const submitTransfer = async () => {
+    if (!idValid || !transferLine || transferToWarehouseId == null) {
+      Alert.alert('Lỗi', 'Chọn sản phẩm và kho đích.');
+      return;
+    }
+    const q = parseInt(transferQty.replace(/\s/g, ''), 10);
+    if (!Number.isFinite(q) || q <= 0) {
+      Alert.alert('Lỗi', 'Nhập số lượng chuyển > 0.');
+      return;
+    }
+    if (q > transferLine.quantity) {
+      Alert.alert('Lỗi', `Trong kho chỉ còn ${transferLine.quantity}.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      await inventoryApi.transferStock(warehouseId, {
+        productId: transferLine.productId,
+        toWarehouse: transferToWarehouseId,
+        quantity: q,
+      });
+      setTransferOpen(false);
+      setTransferLine(null);
+      setTransferToWarehouseId(null);
+      setTransferQty('');
+      await loadStocks();
+    } catch (e) {
+      Alert.alert('Lỗi', getAxiosErrorMessage(e, 'Chuyển kho thất bại.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!idValid) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
@@ -421,21 +483,37 @@ export default function WarehouseDetailScreen() {
         )}
       />
 
-      {!importOpen && !exportOpen && !adjustOpen && !newProductOpen ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Tạo sản phẩm mới trong kho"
-          style={({ pressed }) => [
-            styles.fab,
-            {
-              backgroundColor: theme.tint,
-              bottom: Math.max(insets.bottom, 12) + 16,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-          onPress={openNewProductModal}>
-          <MaterialIcons name="add" size={30} color="#fff" />
-        </Pressable>
+      {!importOpen && !exportOpen && !adjustOpen && !newProductOpen && !transferOpen ? (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Chuyển sản phẩm giữa các kho"
+            style={({ pressed }) => [
+              styles.fab,
+              {
+                backgroundColor: dark ? '#0ea5e9' : '#0284c7',
+                bottom: Math.max(insets.bottom, 12) + 84,
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+            onPress={openTransferModal}>
+            <MaterialIcons name="swap-horiz" size={28} color="#fff" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Tạo sản phẩm mới trong kho"
+            style={({ pressed }) => [
+              styles.fab,
+              {
+                backgroundColor: theme.tint,
+                bottom: Math.max(insets.bottom, 12) + 16,
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+            onPress={openNewProductModal}>
+            <MaterialIcons name="add" size={30} color="#fff" />
+          </Pressable>
+        </>
       ) : null}
 
       {/* Kiểm kê — đặt số lượng thực tế */}
@@ -652,6 +730,104 @@ export default function WarehouseDetailScreen() {
                 onPress={() => void submitCreateProductInWarehouse()}
                 disabled={busy}>
                 <Text style={styles.modalPrimaryText}>{busy ? '…' : 'Tạo & thêm vào kho'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Chuyển sản phẩm giữa các kho quản lý */}
+      <Modal
+        visible={transferOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !busy && setTransferOpen(false)}>
+        <View style={styles.modalBottomWrap}>
+          <Pressable style={styles.modalBackdrop} onPress={() => !busy && setTransferOpen(false)} />
+          <View style={[styles.modalSheet, { backgroundColor: dark ? '#1e293b' : '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Chuyển kho</Text>
+            <Text style={[styles.modalMeta, { color: theme.icon }]}>
+              Chọn sản phẩm từ kho hiện tại, kho đích và số lượng chuyển.
+            </Text>
+
+            <Text style={[styles.inputLabel, { color: theme.icon }]}>1) Sản phẩm cần chuyển</Text>
+            {!transferLine ? (
+              <FlatList
+                style={styles.modalList}
+                data={lines.filter((l) => l.quantity > 0)}
+                keyExtractor={(l) => String(l.productId)}
+                ListEmptyComponent={
+                  <Text style={{ color: theme.icon, padding: 16 }}>
+                    Không có sản phẩm khả dụng để chuyển.
+                  </Text>
+                }
+                renderItem={({ item }) => (
+                  <Pressable style={styles.pickRow} onPress={() => setTransferLine(item)}>
+                    <Text style={{ color: theme.text }}>{item.productName}</Text>
+                    <Text style={{ color: theme.tint }}>Còn: {item.quantity}</Text>
+                  </Pressable>
+                )}
+              />
+            ) : (
+              <Pressable style={[styles.pickRow, { marginBottom: 8 }]} onPress={() => setTransferLine(null)}>
+                <Text style={{ color: theme.text, fontWeight: '700' }}>
+                  {transferLine.productName || `Mã ${transferLine.productId}`}
+                </Text>
+                <Text style={{ color: theme.icon }}>Đang chọn (còn {transferLine.quantity}) · chạm để đổi</Text>
+              </Pressable>
+            )}
+
+            <Text style={[styles.inputLabel, { color: theme.icon }]}>2) Kho đích</Text>
+            <FlatList
+              style={styles.modalList}
+              data={transferTargets}
+              keyExtractor={(w) => String(w.id)}
+              ListEmptyComponent={
+                transferTargetsLoad === 'loading' ? (
+                  <Text style={{ color: theme.icon, padding: 16 }}>Đang tải kho...</Text>
+                ) : transferTargetsLoad === 'error' ? (
+                  <Text style={{ color: theme.icon, padding: 16 }}>
+                    Không tải được danh sách kho đích.
+                  </Text>
+                ) : (
+                  <Text style={{ color: theme.icon, padding: 16 }}>
+                    Bạn chưa được gán thêm kho nào khác để chuyển.
+                  </Text>
+                )
+              }
+              renderItem={({ item }) => {
+                const selected = transferToWarehouseId === item.id;
+                return (
+                  <Pressable
+                    style={[styles.pickRow, selected && { backgroundColor: dark ? '#334155' : '#e2e8f0' }]}
+                    onPress={() => setTransferToWarehouseId(item.id)}>
+                    <Text style={{ color: theme.text, fontWeight: selected ? '700' : '400' }}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ color: theme.icon, fontSize: 13 }}>Mã kho: {item.id}</Text>
+                  </Pressable>
+                );
+              }}
+            />
+
+            <Text style={[styles.inputLabel, { color: theme.icon }]}>3) Số lượng chuyển</Text>
+            <TextInput
+              style={[styles.input, { color: theme.text, borderColor: theme.icon }]}
+              value={transferQty}
+              onChangeText={setTransferQty}
+              keyboardType="number-pad"
+              placeholder="VD: 5"
+              placeholderTextColor={theme.icon}
+              editable={!busy}
+            />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalSecondary} onPress={() => !busy && setTransferOpen(false)}>
+                <Text style={{ color: theme.text }}>Hủy</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalPrimary, { backgroundColor: theme.tint }]}
+                onPress={() => void submitTransfer()}
+                disabled={busy}>
+                <Text style={styles.modalPrimaryText}>{busy ? '…' : 'Chuyển kho'}</Text>
               </Pressable>
             </View>
           </View>
