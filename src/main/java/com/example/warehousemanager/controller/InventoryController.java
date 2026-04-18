@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import com.example.warehousemanager.dto.StockLevelDto;
 import com.example.warehousemanager.dto.WarehouseStockLineDto;
 import com.example.warehousemanager.dto.SetStockQuantityRequest;
+import com.example.warehousemanager.dto.ListingUpdateRequest;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -82,6 +83,15 @@ public class InventoryController {
     ) {
         inventoryService.removeProductLineFromWarehouse(warehouseId, productId);
         return ResponseEntity.ok("Đã gỡ sản phẩm khỏi kho");
+    }
+
+    @PutMapping("/{warehouseId}/listing")
+    public ResponseEntity<?> updateListing(
+        @PathVariable Long warehouseId,
+        @RequestBody ListingUpdateRequest req
+    ) {
+        inventoryService.updateListing(warehouseId, req);
+        return ResponseEntity.ok("Cập nhật trạng thái bày bán thành công");
     }
 
     @PatchMapping("/{warehouseId}/stock")

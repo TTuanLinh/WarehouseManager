@@ -68,6 +68,9 @@ export default function WarehouseDetailScreen() {
   const [newProductName, setNewProductName] = useState('');
   const [newProductSku, setNewProductSku] = useState('');
   const [newProductQty, setNewProductQty] = useState('0');
+  const [listingOpen, setListingOpen] = useState(false);
+  const [listingLine, setListingLine] = useState<WarehouseStockLine | null>(null);
+  const [listingPrice, setListingPrice] = useState('');
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferLine, setTransferLine] = useState<WarehouseStockLine | null>(null);
   const [transferToWarehouseId, setTransferToWarehouseId] = useState<number | null>(null);
@@ -88,6 +91,12 @@ export default function WarehouseDetailScreen() {
     setNewProductSku('');
     setNewProductQty('0');
     setNewProductOpen(true);
+  }, []);
+
+  const openListingModal = useCallback((line: WarehouseStockLine) => {
+    setListingLine(line);
+    setListingPrice(String(line.salePrice ?? 0));
+    setListingOpen(true);
   }, []);
 
   const openTransferModal = useCallback(() => {
@@ -359,6 +368,47 @@ export default function WarehouseDetailScreen() {
     }
   };
 
+  const submitEnableListing = async () => {
+    if (!idValid || !listingLine) return;
+    const price = parseInt(listingPrice.replace(/\s/g, ''), 10);
+    if (!Number.isFinite(price) || price < 0) {
+      Alert.alert('Lỗi', 'Giá bán phải là số >= 0.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await inventoryApi.updateListing(warehouseId, {
+        productId: listingLine.productId,
+        forSale: true,
+        unitPrice: price,
+      });
+      setListingOpen(false);
+      setListingLine(null);
+      await loadStocks();
+    } catch (e) {
+      Alert.alert('Lỗi', getAxiosErrorMessage(e, 'Không cập nhật bày bán được.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disableListing = async (line: WarehouseStockLine) => {
+    if (!idValid) return;
+    setBusy(true);
+    try {
+      await inventoryApi.updateListing(warehouseId, {
+        productId: line.productId,
+        forSale: false,
+      });
+      swipeRefs.current.get(line.productId)?.close();
+      await loadStocks();
+    } catch (e) {
+      Alert.alert('Lỗi', getAxiosErrorMessage(e, 'Không gỡ bày bán được.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!idValid) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
@@ -388,7 +438,7 @@ export default function WarehouseDetailScreen() {
       <View style={[styles.root, { backgroundColor: theme.background }]}>
       {warehouse ? (
         <Text style={[styles.subtitle, { color: theme.icon }]}>
-          Vuốt dòng sang trái để gỡ khỏi kho — chạm dòng để kiểm kê. Nút + tạo sản phẩm mới trong kho.
+          Vuốt trái để bày bán / gỡ bày bán, vuốt phải để gỡ khỏi kho. Chạm dòng để kiểm kê.
         </Text>
       ) : null}
 
@@ -457,8 +507,9 @@ export default function WarehouseDetailScreen() {
               if (el) swipeRefs.current.set(item.productId, el);
               else swipeRefs.current.delete(item.productId);
             }}
+            overshootLeft={false}
             overshootRight={false}
-            renderRightActions={() => (
+            renderLeftActions={() => (
               <View style={styles.swipeActions}>
                 <Pressable
                   style={styles.swipeDelete}
@@ -468,6 +519,30 @@ export default function WarehouseDetailScreen() {
                   <Text style={styles.swipeDeleteLabel}>Gỡ</Text>
                 </Pressable>
               </View>
+            )}
+            renderRightActions={() => (
+              <View style={styles.swipeActions}>
+                {item.forSale ? (
+                  <Pressable
+                    style={styles.swipeUnlist}
+                    onPress={() => void disableListing(item)}
+                    disabled={busy}>
+                    <MaterialIcons name="storefront" size={24} color="#fff" />
+                    <Text style={styles.swipeDeleteLabel}>Gỡ bán</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={styles.swipeList}
+                    onPress={() => {
+                      swipeRefs.current.get(item.productId)?.close();
+                      openListingModal(item);
+                    }}
+                    disabled={busy}>
+                    <MaterialIcons name="sell" size={24} color="#fff" />
+                    <Text style={styles.swipeDeleteLabel}>Bày bán</Text>
+                  </Pressable>
+                )}
+              </View>
             )}>
             <TouchableOpacity
               style={[styles.row, { backgroundColor: dark ? '#1e293b' : '#f1f5f9' }]}
@@ -476,6 +551,11 @@ export default function WarehouseDetailScreen() {
               <View style={styles.rowMain}>
                 <Text style={[styles.name, { color: theme.text }]}>{item.productName}</Text>
                 <Text style={[styles.sku, { color: theme.icon }]}>SKU: {item.sku}</Text>
+                <Text style={[styles.saleInfo, { color: item.forSale ? '#16a34a' : theme.icon }]}>
+                  {item.forSale
+                    ? `Đang bày bán · ${Number(item.salePrice ?? 0).toLocaleString('vi-VN')} đ`
+                    : 'Chưa bày bán'}
+                </Text>
               </View>
               <Text style={[styles.qty, { color: theme.tint }]}>{item.quantity}</Text>
             </TouchableOpacity>
@@ -483,7 +563,7 @@ export default function WarehouseDetailScreen() {
         )}
       />
 
-      {!importOpen && !exportOpen && !adjustOpen && !newProductOpen && !transferOpen ? (
+      {!importOpen && !exportOpen && !adjustOpen && !newProductOpen && !transferOpen && !listingOpen ? (
         <>
           <Pressable
             accessibilityRole="button"
@@ -735,6 +815,45 @@ export default function WarehouseDetailScreen() {
           </View>
         </View>
       </Modal>
+      {/* Set giá và bày bán */}
+      <Modal
+        visible={listingOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !busy && setListingOpen(false)}>
+        <View style={styles.modalCenterWrap}>
+          <Pressable style={styles.modalBackdrop} onPress={() => !busy && setListingOpen(false)} />
+          <View style={[styles.modalCard, { backgroundColor: dark ? '#1e293b' : '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Bày bán sản phẩm</Text>
+            {listingLine ? (
+              <Text style={[styles.modalMeta, { color: theme.icon }]}>
+                {listingLine.productName || `Mã ${listingLine.productId}`} · tồn {listingLine.quantity}
+              </Text>
+            ) : null}
+            <Text style={[styles.inputLabel, { color: theme.icon }]}>Đơn giá bán</Text>
+            <TextInput
+              style={[styles.input, { color: theme.text, borderColor: theme.icon }]}
+              value={listingPrice}
+              onChangeText={setListingPrice}
+              keyboardType="number-pad"
+              placeholder="VD: 150000"
+              placeholderTextColor={theme.icon}
+              editable={!busy}
+            />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalSecondary} onPress={() => !busy && setListingOpen(false)}>
+                <Text style={{ color: theme.text }}>Hủy</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalPrimary, { backgroundColor: theme.tint }]}
+                onPress={() => void submitEnableListing()}
+                disabled={busy}>
+                <Text style={styles.modalPrimaryText}>{busy ? '…' : 'Lưu & bày bán'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* Chuyển sản phẩm giữa các kho quản lý */}
       <Modal
         visible={transferOpen}
@@ -903,6 +1022,20 @@ function makeStyles(dark: boolean) {
       width: 88,
       paddingVertical: 8,
     },
+    swipeList: {
+      backgroundColor: '#0ea5e9',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 92,
+      paddingVertical: 8,
+    },
+    swipeUnlist: {
+      backgroundColor: '#6b7280',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 92,
+      paddingVertical: 8,
+    },
     swipeDeleteLabel: { color: '#fff', fontWeight: '700', fontSize: 13, marginTop: 4 },
     row: {
       flexDirection: 'row',
@@ -915,6 +1048,7 @@ function makeStyles(dark: boolean) {
     rowMain: { flex: 1, marginRight: 12 },
     name: { fontSize: 16, fontWeight: '600' },
     sku: { fontSize: 13, marginTop: 4 },
+    saleInfo: { fontSize: 12, marginTop: 4, fontWeight: '600' },
     qty: { fontSize: 20, fontWeight: '700' },
     empty: { textAlign: 'center', marginTop: 32, fontSize: 15 },
     modalCenterWrap: {

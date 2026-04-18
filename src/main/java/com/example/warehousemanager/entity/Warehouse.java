@@ -16,6 +16,8 @@ public class Warehouse {
     private Long id;
 
     private String name;
+    private String address;
+    private String phone;
 
     public Warehouse(Long id) {
         this.id = id;

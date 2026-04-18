@@ -5,11 +5,12 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public class WarehouseStockLineDto {
+public class OrderItemDto {
+    private Long id;
     private Long productId;
     private String productName;
     private String sku;
+    private Long sourceWarehouseId;
     private Integer quantity;
-    private Boolean forSale;
-    private Long salePrice;
+    private Long unitPrice;
 }

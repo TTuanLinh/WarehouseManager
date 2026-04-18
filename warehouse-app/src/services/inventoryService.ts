@@ -29,3 +29,8 @@ export const transferStock = (
   warehouseId: number,
   body: { productId: number; toWarehouse: number; quantity: number }
 ) => api.post(`/inventory/${warehouseId}/transfer`, body);
+
+export const updateListing = (
+  warehouseId: number,
+  body: { productId: number; forSale?: boolean; unitPrice?: number }
+) => api.put(`/inventory/${warehouseId}/listing`, body);

@@ -7,6 +7,8 @@ export type AuthResponse = {
 export type Warehouse = {
   id: number;
   name: string;
+  address?: string | null;
+  phone?: string | null;
 };
 
 export type ProductRef = {
@@ -47,10 +49,65 @@ export type WarehouseStockLine = {
   productName: string;
   sku: string;
   quantity: number;
+  forSale: boolean;
+  salePrice: number;
 };
 
 export type Product = {
   id: number;
   name: string;
   sku: string;
+};
+
+export type UserBrief = {
+  id: number;
+  username: string;
+};
+
+export type MarketplaceListing = {
+  warehouseId: number;
+  warehouseName: string;
+  warehouseAddress: string | null;
+  productId: number;
+  productName: string;
+  sku: string;
+  availableQuantity: number;
+  unitPrice: number;
+  sellerId: number;
+  sellerUsername: string;
+};
+
+export type OrderStatus =
+  | 'PENDING_SELLER_CONFIRM'
+  | 'IN_TRANSIT'
+  | 'AWAITING_PAYMENT'
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+export type OrderItem = {
+  id: number;
+  productId: number;
+  productName: string;
+  sku: string;
+  sourceWarehouseId: number;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type Order = {
+  id: number;
+  buyerId: number;
+  buyerUsername: string;
+  sellerId: number;
+  sellerUsername: string;
+  destinationWarehouseId: number | null;
+  destinationWarehouseName: string | null;
+  recipientAddress: string | null;
+  recipientPhone: string | null;
+  status: OrderStatus;
+  totalAmount: number;
+  note: string | null;
+  createdAt: string;
+  items: OrderItem[];
 };

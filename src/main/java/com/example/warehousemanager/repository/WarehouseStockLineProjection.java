@@ -11,4 +11,8 @@ public interface WarehouseStockLineProjection {
     String getSku();
 
     Integer getQuantity();
+
+    Boolean getForSale();
+
+    Long getSalePrice();
 }

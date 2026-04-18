@@ -13,6 +13,7 @@ import com.example.warehousemanager.dto.InventoryRequest;
 import com.example.warehousemanager.dto.StockLevelDto;
 import com.example.warehousemanager.dto.WarehouseStockLineDto;
 import com.example.warehousemanager.dto.SetStockQuantityRequest;
+import com.example.warehousemanager.dto.ListingUpdateRequest;
 import com.example.warehousemanager.security.CurrentUserService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -189,7 +190,9 @@ public class InventoryService {
                 p.getProductId(),
                 p.getProductName() != null ? p.getProductName() : "",
                 p.getSku() != null ? p.getSku() : "",
-                p.getQuantity() != null ? p.getQuantity() : 0
+                p.getQuantity() != null ? p.getQuantity() : 0,
+                Boolean.TRUE.equals(p.getForSale()),
+                p.getSalePrice() != null ? p.getSalePrice() : 0L
             ))
             .toList();
     }
@@ -234,6 +237,27 @@ public class InventoryService {
             tx.setCreatedAt(LocalDateTime.now());
             stockTransactionRepository.save(tx);
         }
+    }
+
+    @Transactional
+    public void updateListing(Long warehouseId, ListingUpdateRequest req) {
+        assertWarehouseAccess(warehouseId);
+        if (req.getProductId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productId is required");
+        }
+        Stock stock = stockRepository
+            .findByWarehouseIdAndProductId(warehouseId, req.getProductId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock line not found"));
+        if (req.getForSale() != null) {
+            stock.setForSale(req.getForSale());
+        }
+        if (req.getUnitPrice() != null) {
+            if (req.getUnitPrice() < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unitPrice must be >= 0");
+            }
+            stock.setSalePrice(req.getUnitPrice());
+        }
+        stockRepository.save(stock);
     }
 
     public List<StockLevelDto> getLowStock(int threshold) {

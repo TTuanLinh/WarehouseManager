@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import com.example.warehousemanager.repository.WarehouseRepository;
 import com.example.warehousemanager.entity.Warehouse;
 import com.example.warehousemanager.dto.WarehouseRequest;
+import com.example.warehousemanager.dto.WarehouseContactUpdateRequest;
 import jakarta.transaction.Transactional;
 import java.util.List;
 
@@ -28,6 +29,8 @@ public class WarehouseService {
     public Warehouse createWarehouse(WarehouseRequest req) {
         Warehouse warehouse = new Warehouse();
         warehouse.setName(req.getName());
+        warehouse.setAddress(req.getAddress());
+        warehouse.setPhone(req.getPhone());
         warehouse = warehouseRepository.save(warehouse);
 
         Long currentUserId = currentUserService.getCurrentUserId();
@@ -57,5 +60,19 @@ public class WarehouseService {
 
     public String getWarehouseName(Long id) {
         return getWarehouse(id).getName();
+    }
+
+    @Transactional
+    public Warehouse updateWarehouseContact(Long id, WarehouseContactUpdateRequest req) {
+        Long currentUserId = currentUserService.getCurrentUserId();
+        boolean hasAccess = userWarehouseRepository.existsByUserIdAndWarehouseId(currentUserId, id);
+        if (!hasAccess) {
+            throw new RuntimeException("No access to this warehouse");
+        }
+        Warehouse w = warehouseRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+        w.setAddress(req.getAddress());
+        w.setPhone(req.getPhone());
+        return warehouseRepository.save(w);
     }
 }

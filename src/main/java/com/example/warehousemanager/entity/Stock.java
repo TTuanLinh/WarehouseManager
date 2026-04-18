@@ -28,4 +28,10 @@ public class Stock {
     private Product product;
 
     private Integer quantity;
+
+    /** Whether this stock line is publicly available for other users to order. */
+    private Boolean forSale = false;
+
+    /** Sale unit price (smallest currency unit, e.g. VND). */
+    private Long salePrice;
 }

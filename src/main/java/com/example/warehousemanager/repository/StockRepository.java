@@ -37,7 +37,9 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
             SELECT s.product_id AS productId,
                    p.name AS productName,
                    p.sku AS sku,
-                   s.quantity AS quantity
+                   s.quantity AS quantity,
+                   s.for_sale AS forSale,
+                   s.sale_price AS salePrice
             FROM stock s
             LEFT JOIN product p ON p.id = s.product_id
             WHERE s.warehouse_id = :warehouseId
@@ -46,4 +48,13 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
         nativeQuery = true
     )
     List<WarehouseStockLineProjection> listLinesForWarehouse(@Param("warehouseId") Long warehouseId);
+
+    @Query("""
+        SELECT s FROM Stock s
+        WHERE s.warehouse.id IN :warehouseIds
+          AND s.forSale = true
+          AND s.quantity > 0
+        ORDER BY s.product.name ASC
+        """)
+    List<Stock> findSellableStocks(@Param("warehouseIds") Set<Long> warehouseIds);
 }
