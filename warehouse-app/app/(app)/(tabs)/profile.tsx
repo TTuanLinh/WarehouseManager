@@ -1,18 +1,104 @@
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { getAxiosErrorMessage } from '@/src/services/api';
+import * as userApi from '@/src/services/userService';
 
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const dark = colorScheme === 'dark';
+  const [profile, setProfile] = useState<userApi.UserProfile | null>(null);
+  const [uploadingQr, setUploadingQr] = useState(false);
 
   const logout = async () => {
     await signOut();
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (session == null) {
+        setProfile(null);
+        return;
+      }
+      let cancelled = false;
+      void (async () => {
+        try {
+          const { data } = await userApi.getMyProfile();
+          if (!cancelled) setProfile(data ?? null);
+        } catch {
+          if (!cancelled) setProfile(null);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [session])
+  );
+
+  const pickBankQrImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Cần quyền', 'Vui lòng cho phép truy cập thư viện ảnh để chọn ảnh mã QR ngân hàng.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.88,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setUploadingQr(true);
+    try {
+      let uri = asset.uri;
+      // Android thường trả content:// — axios/RN đọc multipart không ổn định; copy ra file:// trong cache.
+      const needsCopy =
+        (Platform.OS === 'android' && uri.startsWith('content://')) ||
+        uri.startsWith('ph://') ||
+        uri.startsWith('assets-library://');
+      if (needsCopy && cacheDirectory) {
+        const dest = `${cacheDirectory}wm-bank-qr-${Date.now()}.jpg`;
+        await copyAsync({ from: uri, to: dest });
+        uri = dest;
+      }
+
+      const mime =
+        ('mimeType' in asset && typeof asset.mimeType === 'string' && asset.mimeType) ||
+        (uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+      const fileName =
+        ('fileName' in asset && typeof asset.fileName === 'string' && asset.fileName) ||
+        (mime === 'image/png' ? 'bank-qr.png' : 'bank-qr.jpg');
+
+      const form = new FormData();
+      form.append('file', { uri, name: fileName, type: mime } as never);
+      const { data } = await userApi.uploadBankQrImage(form);
+      setProfile(data ?? null);
+      Alert.alert(
+        'Đã lưu',
+        'Máy chủ đã đọc nội dung QR trong ảnh (OpenCV). Người mua sẽ thấy mã QR này khi đơn ở trạng thái chờ thanh toán.'
+      );
+    } catch (e) {
+      Alert.alert('Lỗi', getAxiosErrorMessage(e, 'Không tải được ảnh hoặc không đọc được mã QR.'));
+    } finally {
+      setUploadingQr(false);
+    }
   };
 
   if (session == null) {
@@ -40,13 +126,43 @@ export default function ProfileScreen() {
     );
   }
 
+  const hasQr = profile?.hasBankQr === true;
+
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
+    <ScrollView
+      style={[styles.scroll, { backgroundColor: theme.background }]}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled">
       <View style={[styles.card, { backgroundColor: dark ? '#1e293b' : '#f1f5f9' }]}>
         <Text style={[styles.label, { color: theme.icon }]}>Tên đăng nhập</Text>
         <Text style={[styles.value, { color: theme.text }]}>{session.username}</Text>
         <Text style={[styles.label, { color: theme.icon, marginTop: 16 }]}>Mã người dùng</Text>
         <Text style={[styles.value, { color: theme.text }]}>{session.userId}</Text>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: dark ? '#1e293b' : '#f1f5f9' }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>QR ngân hàng (người bán)</Text>
+        <Text style={[styles.hintBlock, { color: theme.icon }]}>
+          Tải ảnh chụp hoặc file ảnh chứa mã QR tài khoản ngân hàng của bạn. Hệ thống dùng OpenCV để đọc nội dung QR
+          và lưu lại. Khi có đơn ở trạng thái chờ thanh toán, người mua sẽ thấy mã QR này (cùng nội dung đã đọc từ ảnh
+          của bạn).
+        </Text>
+        <Text style={{ color: hasQr ? '#16a34a' : theme.icon, fontWeight: '600', marginBottom: 10 }}>
+          {hasQr ? 'Đã cấu hình mã QR ngân hàng.' : 'Chưa có mã QR — hãy chọn ảnh.'}
+        </Text>
+        {uploadingQr ? (
+          <ActivityIndicator color={theme.tint} style={{ marginVertical: 8 }} />
+        ) : (
+          <Pressable
+            style={({ pressed }) => [
+              styles.btnPrimary,
+              { backgroundColor: theme.tint },
+              pressed && styles.pressed,
+            ]}
+            onPress={() => void pickBankQrImage()}>
+            <Text style={styles.btnPrimaryText}>{hasQr ? 'Đổi ảnh QR ngân hàng' : 'Chọn ảnh QR ngân hàng'}</Text>
+          </Pressable>
+        )}
       </View>
 
       <Pressable
@@ -64,11 +180,13 @@ export default function ProfileScreen() {
         onPress={logout}>
         <Text style={styles.dangerText}>Đăng xuất</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
+  scrollContent: { padding: 20, gap: 16, paddingBottom: 40 },
   root: {
     flex: 1,
     padding: 20,
@@ -86,8 +204,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
   },
+  hintBlock: { fontSize: 14, lineHeight: 21, marginBottom: 10 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 6 },
   btnPrimary: {
-    backgroundColor: '#38bdf8',
     paddingVertical: 16,
     borderRadius: 14,
     alignItems: 'center',

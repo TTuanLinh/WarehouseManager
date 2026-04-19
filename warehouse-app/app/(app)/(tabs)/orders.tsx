@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
@@ -25,6 +26,16 @@ import type { MarketplaceListing, Order, UserBrief, Warehouse } from '@/src/type
 
 type CartLine = MarketplaceListing & { quantity: number };
 type RoleTab = 'buyer' | 'seller';
+
+/** QR dự phòng khi người bán chưa upload ảnh QR ngân hàng (JSON: mã đơn + số tiền). */
+function orderPaymentQrPayload(order: Order): string {
+  return JSON.stringify({
+    kind: 'WAREHOUSE_ORDER_PAY',
+    orderId: order.id,
+    amountVnd: order.totalAmount,
+    payTo: order.sellerUsername,
+  });
+}
 
 function statusLabel(status: Order['status']) {
   switch (status) {
@@ -449,6 +460,33 @@ export default function OrdersScreen() {
               </Pressable>
             ) : null}
 
+            {role === 'buyer' && item.status === 'AWAITING_PAYMENT' ? (
+              <View style={styles.qrPayBlock}>
+                <Text style={[styles.qrPayTitle, { color: theme.text }]}>Thanh toán đơn hàng</Text>
+                <Text style={{ color: theme.icon, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>
+                  Số tiền: {item.totalAmount.toLocaleString('vi-VN')} đ. Mã QR ẩn sau khi người bán xác nhận đã nhận
+                  tiền.
+                </Text>
+                <View style={styles.qrWrap}>
+                  <QRCode
+                    value={
+                      item.sellerBankQrPayload && item.sellerBankQrPayload.trim().length > 0
+                        ? item.sellerBankQrPayload.trim()
+                        : orderPaymentQrPayload(item)
+                    }
+                    size={192}
+                    color="#0f172a"
+                    backgroundColor="#ffffff"
+                  />
+                </View>
+                <Text style={{ color: theme.icon, fontSize: 11, marginTop: 6, textAlign: 'center' }}>
+                  {item.sellerBankQrPayload && item.sellerBankQrPayload.trim().length > 0
+                    ? 'Mã QR ngân hàng của người bán (đã tải lên ở tab Cá nhân).'
+                    : 'Người bán chưa cấu hình QR ngân hàng — đang hiển thị mã dự phòng (thông tin đơn + số tiền).'}
+                </Text>
+              </View>
+            ) : null}
+
             {role === 'seller' && item.status === 'AWAITING_PAYMENT' ? (
               <Pressable
                 style={[styles.primaryBtn, { backgroundColor: '#16a34a', marginTop: 8, alignSelf: 'flex-start' }]}
@@ -515,5 +553,14 @@ function makeStyles(dark: boolean) {
     },
     modalWrap: { flex: 1, justifyContent: 'center' },
     backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+    qrPayBlock: { marginTop: 12, alignItems: 'center', alignSelf: 'stretch' },
+    qrPayTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
+    qrWrap: {
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: '#fff',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
   });
 }

@@ -14,6 +14,8 @@ public class OrderDto {
     private String buyerUsername;
     private Long sellerId;
     private String sellerUsername;
+    /** Nội dung QR ngân hàng của người bán (null nếu chưa upload). Người mua dùng để hiển thị mã thanh toán. */
+    private String sellerBankQrPayload;
     private Long destinationWarehouseId;
     private String destinationWarehouseName;
     private String recipientAddress;

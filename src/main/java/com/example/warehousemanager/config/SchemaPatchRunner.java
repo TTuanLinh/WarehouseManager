@@ -23,5 +23,8 @@ public class SchemaPatchRunner implements ApplicationRunner {
         jdbcTemplate.execute("ALTER TABLE customer_order ADD COLUMN IF NOT EXISTS recipient_phone VARCHAR(64)");
         jdbcTemplate.execute("ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS address VARCHAR(1000)");
         jdbcTemplate.execute("ALTER TABLE warehouse ADD COLUMN IF NOT EXISTS phone VARCHAR(64)");
+        jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_qr_payload TEXT");
+        jdbcTemplate.execute("ALTER TABLE user_warehouse ADD COLUMN IF NOT EXISTS role VARCHAR(32)");
+        jdbcTemplate.execute("UPDATE user_warehouse SET role = 'ADMIN' WHERE role IS NULL OR TRIM(role) = ''");
     }
 }

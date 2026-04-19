@@ -101,6 +101,8 @@ export type Order = {
   buyerUsername: string;
   sellerId: number;
   sellerUsername: string;
+  /** Nội dung chuỗi QR ngân hàng của người bán (từ ảnh đã upload ở Cá nhân). */
+  sellerBankQrPayload?: string | null;
   destinationWarehouseId: number | null;
   destinationWarehouseName: string | null;
   recipientAddress: string | null;

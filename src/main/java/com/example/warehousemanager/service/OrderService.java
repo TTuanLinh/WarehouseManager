@@ -253,12 +253,14 @@ public class OrderService {
                 i.getUnitPrice()
             ))
             .toList();
+        String sellerQr = order.getSeller().getBankQrPayload();
         return new OrderDto(
             order.getId(),
             order.getBuyer().getId(),
             order.getBuyer().getUsername(),
             order.getSeller().getId(),
             order.getSeller().getUsername(),
+            sellerQr,
             order.getDestinationWarehouseId(),
             order.getDestinationWarehouseName(),
             order.getRecipientAddress(),

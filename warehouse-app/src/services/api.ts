@@ -7,7 +7,7 @@ import { invalidateStoredSession } from '@/src/authInvalidation';
 
 const SESSION_KEY = 'wm_session';
 
-/** Human-readable message from axios errors (Spring body, network, HTTP status). */
+/** Human-readable message from axios errors (Spring body, network, HTTP status) hoặc lỗi `fetch` / `Error`. */
 export function getAxiosErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError(error)) {
     if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
@@ -31,6 +31,18 @@ export function getAxiosErrorMessage(error: unknown, fallback: string): string {
       const tried = `${error.config?.baseURL ?? ''}${error.config?.url ?? ''}`;
       const hint = tried ? ` (đã gọi: ${tried})` : '';
       return `Không tìm thấy API (404)${hint}. Base URL phải kết thúc bằng /api (vd: http://IP:8080/api). Khởi động lại backend sau khi thêm endpoint.`;
+    }
+    if (error.message?.trim()) {
+      return error.message.trim();
+    }
+  }
+  if (error instanceof Error) {
+    const m = error.message;
+    if (m === 'Network request failed' || m.includes('Failed to fetch') || m.includes('Load failed')) {
+      return 'Không kết nối được máy chủ. Bật API (port 8080), cùng Wi‑Fi với điện thoại, hoặc đặt EXPO_PUBLIC_API_BASE_URL (vd: http://IP_MÁY_TÍNH:8080/api).';
+    }
+    if (m.trim()) {
+      return m.trim();
     }
   }
   return fallback;
@@ -123,6 +135,17 @@ api.interceptors.request.use(async (config) => {
       }
     } catch {
       /* ignore */
+    }
+  }
+  // React Native + axios: không được gửi Content-Type: application/json kèm FormData (thiếu boundary) → lỗi giống "mất kết nối".
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+    const h = config.headers as Record<string, unknown> & { delete?: (name: string) => void };
+    if (typeof h.delete === 'function') {
+      h.delete('Content-Type');
+      h.delete('content-type');
+    } else {
+      delete h['Content-Type'];
+      delete h['content-type'];
     }
   }
   return config;

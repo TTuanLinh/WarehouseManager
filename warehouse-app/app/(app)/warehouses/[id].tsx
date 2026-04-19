@@ -78,7 +78,15 @@ export default function WarehouseDetailScreen() {
   const [transferTargets, setTransferTargets] = useState<Warehouse[]>([]);
   const [transferTargetsLoad, setTransferTargetsLoad] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
 
+  const [warehouseRole, setWarehouseRole] = useState<'ADMIN' | 'STAFF' | null>(null);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [members, setMembers] = useState<{ userId: number; username: string; role: string }[]>([]);
+  const [membersLoad, setMembersLoad] = useState(false);
+  const [newMemberUsername, setNewMemberUsername] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<'ADMIN' | 'STAFF'>('STAFF');
+
   const swipeRefs = useRef<Map<number, Swipeable | null>>(new Map());
+  const canAdminWarehouse = warehouseRole === 'ADMIN';
 
   const openImport = useCallback(() => {
     setImportPickId(null);
@@ -139,12 +147,18 @@ export default function WarehouseDetailScreen() {
     setLoadError(null);
     try {
       await Promise.all([loadWarehouse(), loadStocks()]);
+      try {
+        const { data: roleData } = await warehouseApi.getMyWarehouseRole(warehouseId);
+        setWarehouseRole(roleData?.role === 'STAFF' ? 'STAFF' : 'ADMIN');
+      } catch {
+        setWarehouseRole(null);
+      }
     } catch (e) {
       setLoadError(getAxiosErrorMessage(e, 'Không tải được dữ liệu kho.'));
     } finally {
       setLoading(false);
     }
-  }, [idValid, loadWarehouse, loadStocks]);
+  }, [idValid, loadWarehouse, loadStocks, warehouseId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -164,6 +178,63 @@ export default function WarehouseDetailScreen() {
       setRefreshing(false);
     }
   }, [idValid, loadAll]);
+
+  const loadMembersList = useCallback(async () => {
+    if (!idValid) return;
+    setMembersLoad(true);
+    try {
+      const { data } = await warehouseApi.getWarehouseMembers(warehouseId);
+      setMembers(data ?? []);
+    } catch {
+      setMembers([]);
+    } finally {
+      setMembersLoad(false);
+    }
+  }, [idValid, warehouseId]);
+
+  useEffect(() => {
+    if (!membersOpen || !idValid) return;
+    void loadMembersList();
+  }, [membersOpen, idValid, loadMembersList]);
+
+  const submitAddMember = async () => {
+    const u = newMemberUsername.trim();
+    if (!u) {
+      Alert.alert('Lỗi', 'Nhập username.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await warehouseApi.addWarehouseMember(warehouseId, u, newMemberRole);
+      setMembers(data ?? []);
+      setNewMemberUsername('');
+      setNewMemberRole('STAFF');
+    } catch (e) {
+      Alert.alert('Lỗi', getAxiosErrorMessage(e, 'Không thêm được thành viên.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeMember = async (userId: number) => {
+    setBusy(true);
+    try {
+      await warehouseApi.removeWarehouseMember(warehouseId, userId);
+      await loadMembersList();
+      await loadAll();
+    } catch (e) {
+      Alert.alert('Lỗi', getAxiosErrorMessage(e, 'Không xóa được thành viên.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmRemoveMember = (m: { userId: number; username: string }) => {
+    Alert.alert('Xóa thành viên', `Gỡ ${m.username} khỏi kho này?`, [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Xóa', style: 'destructive', onPress: () => void removeMember(m.userId) },
+    ]);
+  };
 
   const fetchProducts = useCallback(async () => {
     setProductsLoad('loading');
@@ -438,7 +509,9 @@ export default function WarehouseDetailScreen() {
       <View style={[styles.root, { backgroundColor: theme.background }]}>
       {warehouse ? (
         <Text style={[styles.subtitle, { color: theme.icon }]}>
-          Vuốt trái để bày bán / gỡ bày bán, vuốt phải để gỡ khỏi kho. Chạm dòng để kiểm kê.
+          {canAdminWarehouse
+            ? 'Vuốt phải: gỡ khỏi kho. Vuốt trái: bày bán / gỡ bày bán. Chạm dòng để kiểm kê.'
+            : 'Staff: không vuốt gỡ kho hay bày bán; chạm dòng để kiểm kê, nhập/xuất kho như bình thường.'}
         </Text>
       ) : null}
 
@@ -458,6 +531,20 @@ export default function WarehouseDetailScreen() {
           <Text style={[styles.actionBtnTextBase, { color: dark ? '#f8fafc' : '#b91c1c' }]}>Xuất kho</Text>
         </Pressable>
       </View>
+
+      {canAdminWarehouse ? (
+        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionBtn,
+              { backgroundColor: dark ? '#334155' : '#e2e8f0', flex: 0 },
+              pressed && styles.pressed,
+            ]}
+            onPress={() => setMembersOpen(true)}>
+            <Text style={[styles.actionBtnTextBase, { color: theme.text }]}>Quản lý thành viên kho</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View
         style={[
@@ -501,49 +588,8 @@ export default function WarehouseDetailScreen() {
               : `Không có sản phẩm khớp “${stockSearch.trim()}”.`}
           </Text>
         }
-        renderItem={({ item }) => (
-          <Swipeable
-            ref={(el) => {
-              if (el) swipeRefs.current.set(item.productId, el);
-              else swipeRefs.current.delete(item.productId);
-            }}
-            overshootLeft={false}
-            overshootRight={false}
-            renderLeftActions={() => (
-              <View style={styles.swipeActions}>
-                <Pressable
-                  style={styles.swipeDelete}
-                  onPress={() => promptRemoveFromWarehouse(item)}
-                  disabled={busy}>
-                  <MaterialIcons name="delete-outline" size={26} color="#fff" />
-                  <Text style={styles.swipeDeleteLabel}>Gỡ</Text>
-                </Pressable>
-              </View>
-            )}
-            renderRightActions={() => (
-              <View style={styles.swipeActions}>
-                {item.forSale ? (
-                  <Pressable
-                    style={styles.swipeUnlist}
-                    onPress={() => void disableListing(item)}
-                    disabled={busy}>
-                    <MaterialIcons name="storefront" size={24} color="#fff" />
-                    <Text style={styles.swipeDeleteLabel}>Gỡ bán</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    style={styles.swipeList}
-                    onPress={() => {
-                      swipeRefs.current.get(item.productId)?.close();
-                      openListingModal(item);
-                    }}
-                    disabled={busy}>
-                    <MaterialIcons name="sell" size={24} color="#fff" />
-                    <Text style={styles.swipeDeleteLabel}>Bày bán</Text>
-                  </Pressable>
-                )}
-              </View>
-            )}>
+        renderItem={({ item }) => {
+          const row = (
             <TouchableOpacity
               style={[styles.row, { backgroundColor: dark ? '#1e293b' : '#f1f5f9' }]}
               activeOpacity={0.85}
@@ -559,11 +605,66 @@ export default function WarehouseDetailScreen() {
               </View>
               <Text style={[styles.qty, { color: theme.tint }]}>{item.quantity}</Text>
             </TouchableOpacity>
-          </Swipeable>
-        )}
+          );
+          if (!canAdminWarehouse) {
+            return row;
+          }
+          return (
+            <Swipeable
+              ref={(el) => {
+                if (el) swipeRefs.current.set(item.productId, el);
+                else swipeRefs.current.delete(item.productId);
+              }}
+              overshootLeft={false}
+              overshootRight={false}
+              renderLeftActions={() => (
+                <View style={styles.swipeActions}>
+                  <Pressable
+                    style={styles.swipeDelete}
+                    onPress={() => promptRemoveFromWarehouse(item)}
+                    disabled={busy}>
+                    <MaterialIcons name="delete-outline" size={26} color="#fff" />
+                    <Text style={styles.swipeDeleteLabel}>Gỡ</Text>
+                  </Pressable>
+                </View>
+              )}
+              renderRightActions={() => (
+                <View style={styles.swipeActions}>
+                  {item.forSale ? (
+                    <Pressable
+                      style={styles.swipeUnlist}
+                      onPress={() => void disableListing(item)}
+                      disabled={busy}>
+                      <MaterialIcons name="storefront" size={24} color="#fff" />
+                      <Text style={styles.swipeDeleteLabel}>Gỡ bán</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={styles.swipeList}
+                      onPress={() => {
+                        swipeRefs.current.get(item.productId)?.close();
+                        openListingModal(item);
+                      }}
+                      disabled={busy}>
+                      <MaterialIcons name="sell" size={24} color="#fff" />
+                      <Text style={styles.swipeDeleteLabel}>Bày bán</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}>
+              {row}
+            </Swipeable>
+          );
+        }}
       />
 
-      {!importOpen && !exportOpen && !adjustOpen && !newProductOpen && !transferOpen && !listingOpen ? (
+      {!importOpen &&
+      !exportOpen &&
+      !adjustOpen &&
+      !newProductOpen &&
+      !transferOpen &&
+      !listingOpen &&
+      !membersOpen ? (
         <>
           <Pressable
             accessibilityRole="button"
@@ -626,6 +727,85 @@ export default function WarehouseDetailScreen() {
                 <Text style={styles.modalPrimaryText}>{busy ? '…' : 'Lưu'}</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={membersOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !busy && setMembersOpen(false)}>
+        <View style={styles.modalCenterWrap}>
+          <Pressable style={styles.modalBackdrop} onPress={() => !busy && setMembersOpen(false)} />
+          <View style={[styles.modalCard, { backgroundColor: dark ? '#1e293b' : '#fff', maxHeight: '88%' }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Thành viên kho</Text>
+            <Text style={[styles.modalMeta, { color: theme.icon }]}>
+              ADMIN: đồng quản trị (gỡ hàng, bày bán, thêm người). STAFF: nhập/xuất/kiểm kê, không gỡ dòng kho và không bày bán.
+            </Text>
+            <TextInput
+              style={[styles.input, { color: theme.text, borderColor: theme.icon }]}
+              placeholder="Username cần thêm"
+              placeholderTextColor={theme.icon}
+              value={newMemberUsername}
+              onChangeText={setNewMemberUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!busy}
+            />
+            <View style={styles.rolePickRow}>
+              <Pressable
+                onPress={() => setNewMemberRole('ADMIN')}
+                style={[
+                  styles.roleChip,
+                  { borderColor: theme.icon },
+                  newMemberRole === 'ADMIN' && { backgroundColor: theme.tint, borderColor: theme.tint },
+                ]}>
+                <Text style={{ color: newMemberRole === 'ADMIN' ? '#fff' : theme.text, fontWeight: '600' }}>
+                  ADMIN
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setNewMemberRole('STAFF')}
+                style={[
+                  styles.roleChip,
+                  { borderColor: theme.icon },
+                  newMemberRole === 'STAFF' && { backgroundColor: theme.tint, borderColor: theme.tint },
+                ]}>
+                <Text style={{ color: newMemberRole === 'STAFF' ? '#fff' : theme.text, fontWeight: '600' }}>
+                  STAFF
+                </Text>
+              </Pressable>
+            </View>
+            <Pressable
+              style={[styles.modalPrimary, { backgroundColor: theme.tint, marginBottom: 12 }]}
+              onPress={() => void submitAddMember()}
+              disabled={busy}>
+              <Text style={styles.modalPrimaryText}>{busy ? '…' : 'Thêm thành viên'}</Text>
+            </Pressable>
+            {membersLoad ? <ActivityIndicator color={theme.tint} style={{ marginBottom: 8 }} /> : null}
+            <FlatList
+              data={members}
+              keyExtractor={(m) => String(m.userId)}
+              style={{ maxHeight: 240 }}
+              ListEmptyComponent={
+                <Text style={{ color: theme.icon, marginBottom: 8 }}>Chưa tải hoặc chưa có thành viên.</Text>
+              }
+              renderItem={({ item: m }) => (
+                <View style={[styles.memberRow, { borderBottomColor: dark ? '#334155' : '#e2e8f0' }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontWeight: '600' }}>{m.username}</Text>
+                    <Text style={{ color: theme.icon, fontSize: 12 }}>Vai trò: {m.role}</Text>
+                  </View>
+                  <Pressable onPress={() => confirmRemoveMember(m)} disabled={busy}>
+                    <Text style={{ color: '#dc2626', fontWeight: '700' }}>Gỡ</Text>
+                  </Pressable>
+                </View>
+              )}
+            />
+            <Pressable style={[styles.modalSecondary, { marginTop: 8 }]} onPress={() => !busy && setMembersOpen(false)}>
+              <Text style={{ color: theme.text }}>Đóng</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1037,6 +1217,19 @@ function makeStyles(dark: boolean) {
       paddingVertical: 8,
     },
     swipeDeleteLabel: { color: '#fff', fontWeight: '700', fontSize: 13, marginTop: 4 },
+    rolePickRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+    roleChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    memberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
     row: {
       flexDirection: 'row',
       alignItems: 'center',

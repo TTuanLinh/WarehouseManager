@@ -1,5 +1,6 @@
 package com.example.warehousemanager.entity;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -23,4 +24,8 @@ public class User {
     private String username;
     private String password;
     private String email;
+
+    /** Nội dung chuỗi đã giải mã từ ảnh QR ngân hàng (upload ở tab Cá nhân). */
+    @Column(columnDefinition = "TEXT")
+    private String bankQrPayload;
 }

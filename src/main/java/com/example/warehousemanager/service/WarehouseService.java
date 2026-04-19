@@ -14,6 +14,8 @@ import com.example.warehousemanager.entity.User;
 import com.example.warehousemanager.repository.UserRepository;
 import com.example.warehousemanager.repository.UserWarehouseRepository;
 import com.example.warehousemanager.security.CurrentUserService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +26,7 @@ public class WarehouseService {
     private final UserWarehouseRepository userWarehouseRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
+    private final WarehouseAccessService warehouseAccessService;
 
     @Transactional
     public Warehouse createWarehouse(WarehouseRequest req) {
@@ -54,23 +57,23 @@ public class WarehouseService {
     }
 
     public Warehouse getWarehouse(Long id) {
+        warehouseAccessService.requireMembership(id);
         return warehouseRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Warehouse not found"));
     }
 
     public String getWarehouseName(Long id) {
-        return getWarehouse(id).getName();
+        warehouseAccessService.requireMembership(id);
+        return warehouseRepository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Warehouse not found"))
+            .getName();
     }
 
     @Transactional
     public Warehouse updateWarehouseContact(Long id, WarehouseContactUpdateRequest req) {
-        Long currentUserId = currentUserService.getCurrentUserId();
-        boolean hasAccess = userWarehouseRepository.existsByUserIdAndWarehouseId(currentUserId, id);
-        if (!hasAccess) {
-            throw new RuntimeException("No access to this warehouse");
-        }
+        warehouseAccessService.requireAdmin(id);
         Warehouse w = warehouseRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Warehouse not found"));
         w.setAddress(req.getAddress());
         w.setPhone(req.getPhone());
         return warehouseRepository.save(w);

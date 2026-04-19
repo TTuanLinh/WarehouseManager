@@ -31,6 +31,7 @@ public class InventoryService {
     private final StockTransactionRepository stockTransactionRepository;
     private final UserWarehouseRepository userWarehouseRepository;
     private final CurrentUserService currentUserService;
+    private final WarehouseAccessService warehouseAccessService;
 
     @Transactional
     public void addStock(Long productId, Long warehouseId, int quantity) {
@@ -159,16 +160,12 @@ public class InventoryService {
     }
 
     private void assertWarehouseAccess(Long warehouseId) {
-        Long currentUserId = currentUserService.getCurrentUserId();
-        boolean hasAccess = userWarehouseRepository.existsByUserIdAndWarehouseId(currentUserId, warehouseId);
-        if (!hasAccess) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this warehouse");
-        }
+        warehouseAccessService.requireMembership(warehouseId);
     }
 
     @Transactional
     public void removeProductLineFromWarehouse(Long warehouseId, Long productId) {
-        assertWarehouseAccess(warehouseId);
+        warehouseAccessService.requireAdmin(warehouseId);
         Stock stock = stockRepository
             .findByWarehouseIdAndProductId(warehouseId, productId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không có dòng tồn kho này"));
@@ -241,7 +238,7 @@ public class InventoryService {
 
     @Transactional
     public void updateListing(Long warehouseId, ListingUpdateRequest req) {
-        assertWarehouseAccess(warehouseId);
+        warehouseAccessService.requireAdmin(warehouseId);
         if (req.getProductId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "productId is required");
         }

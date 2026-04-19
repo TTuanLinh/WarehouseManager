@@ -29,6 +29,13 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần truy cập ảnh để bạn chọn ảnh mã QR ngân hàng.",
+          "cameraPermission": "Ứng dụng cần camera nếu bạn chụp ảnh mã QR."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

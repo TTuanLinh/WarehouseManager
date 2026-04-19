@@ -1,6 +1,10 @@
 spring:
   application:
     name: WarehouseManager
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 8MB
   datasource:
     url: jdbc:postgresql://localhost:5432/warehouse_manager
     username: postgres
