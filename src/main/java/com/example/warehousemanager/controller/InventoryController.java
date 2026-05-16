@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 import com.example.warehousemanager.dto.TransferRequest;
 import com.example.warehousemanager.service.InventoryService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.http.ResponseEntity;
@@ -38,7 +39,7 @@ public class InventoryController {
     @PostMapping("/{warehouseId}/transfer")
     public ResponseEntity<?> transfer(
         @PathVariable Long warehouseId,
-        @RequestBody TransferRequest req
+        @RequestBody @Valid TransferRequest req
     ) {
 
         inventoryService.transfer(
@@ -54,7 +55,7 @@ public class InventoryController {
     @PostMapping("/{warehouseId}/import")
     public ResponseEntity<?> importInventory(
         @PathVariable Long warehouseId,
-        @RequestBody List<InventoryRequest> requests
+        @RequestBody @Valid List<InventoryRequest> requests
     ) {
         inventoryService.addStocks(warehouseId, requests);
         return ResponseEntity.ok("Thêm nhiều sản phẩm thành công");
@@ -63,7 +64,7 @@ public class InventoryController {
     @PostMapping("/{warehouseId}/export")
     public ResponseEntity<?> exportInventory(
         @PathVariable Long warehouseId,
-        @RequestBody List<InventoryRequest> requests
+        @RequestBody @Valid List<InventoryRequest> requests
     ) {
         inventoryService.removeStocks(warehouseId, requests);
         return ResponseEntity.ok("Xóa nhiều sản phẩm thành công");
@@ -88,7 +89,7 @@ public class InventoryController {
     @PutMapping("/{warehouseId}/listing")
     public ResponseEntity<?> updateListing(
         @PathVariable Long warehouseId,
-        @RequestBody ListingUpdateRequest req
+        @RequestBody @Valid ListingUpdateRequest req
     ) {
         inventoryService.updateListing(warehouseId, req);
         return ResponseEntity.ok("Cập nhật trạng thái bày bán thành công");
@@ -97,7 +98,7 @@ public class InventoryController {
     @PatchMapping("/{warehouseId}/stock")
     public ResponseEntity<?> setStockQuantityPatch(
         @PathVariable Long warehouseId,
-        @RequestBody SetStockQuantityRequest req
+        @RequestBody @Valid SetStockQuantityRequest req
     ) {
         inventoryService.setStockQuantity(warehouseId, req);
         return ResponseEntity.ok("Cập nhật tồn kho thành công");
@@ -107,7 +108,7 @@ public class InventoryController {
     @PutMapping("/{warehouseId}/stock")
     public ResponseEntity<?> setStockQuantityPut(
         @PathVariable Long warehouseId,
-        @RequestBody SetStockQuantityRequest req
+        @RequestBody @Valid SetStockQuantityRequest req
     ) {
         inventoryService.setStockQuantity(warehouseId, req);
         return ResponseEntity.ok("Cập nhật tồn kho thành công");

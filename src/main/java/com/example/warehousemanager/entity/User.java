@@ -25,7 +25,6 @@ public class User {
     private String password;
     private String email;
 
-    /** Nội dung chuỗi đã giải mã từ ảnh QR ngân hàng (upload ở tab Cá nhân). */
     @Column(columnDefinition = "TEXT")
     private String bankQrPayload;
 }

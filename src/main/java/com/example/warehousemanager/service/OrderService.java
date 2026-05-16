@@ -92,6 +92,9 @@ public class OrderService {
             if (it.getWarehouseId() == null || it.getProductId() == null || it.getQuantity() == null || it.getQuantity() <= 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order item");
             }
+            if (it.getWarehouseId().equals(req.getDestinationWarehouseId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Kho nguồn và kho nhận không được trùng nhau (không thể tự chuyển hàng trong cùng một kho)");
+            }
             boolean sellerHasWarehouse = userWarehouseRepository.existsByUserIdAndWarehouseId(seller.getId(), it.getWarehouseId());
             if (!sellerHasWarehouse) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Seller does not manage source warehouse");

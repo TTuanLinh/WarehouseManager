@@ -3,6 +3,7 @@ package com.example.warehousemanager.controller;
 import com.example.warehousemanager.dto.CreateOrderRequest;
 import com.example.warehousemanager.dto.OrderDto;
 import com.example.warehousemanager.service.OrderService;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,8 +23,7 @@ public class OrderController {
 
     @GetMapping
     public ResponseEntity<List<OrderDto>> getMyOrders(
-        @RequestParam(name = "role", defaultValue = "buyer") String role
-    ) {
+            @RequestParam(name = "role", defaultValue = "buyer") String role) {
         return ResponseEntity.ok(orderService.getMyOrders(role));
     }
 
@@ -33,7 +33,7 @@ public class OrderController {
     }
 
     @PostMapping
-    public ResponseEntity<OrderDto> createOrder(@RequestBody CreateOrderRequest req) {
+    public ResponseEntity<OrderDto> createOrder(@RequestBody @Valid CreateOrderRequest req) {
         return ResponseEntity.ok(orderService.createOrder(req));
     }
 

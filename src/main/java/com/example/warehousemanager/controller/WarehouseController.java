@@ -10,6 +10,7 @@ import com.example.warehousemanager.entity.Warehouse;
 import com.example.warehousemanager.service.WarehouseAccessService;
 import com.example.warehousemanager.service.WarehouseMemberService;
 import com.example.warehousemanager.service.WarehouseService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,7 +31,7 @@ public class WarehouseController {
     private final WarehouseMemberService warehouseMemberService;
 
     @PostMapping
-    public ResponseEntity<Warehouse> createWarehouse(@RequestBody WarehouseRequest req) {
+    public ResponseEntity<Warehouse> createWarehouse(@RequestBody @Valid WarehouseRequest req) {
         Warehouse warehouse = warehouseService.createWarehouse(req);
         return ResponseEntity.ok(warehouse);
     }
@@ -48,7 +49,7 @@ public class WarehouseController {
     @PostMapping("/{id}/members")
     public ResponseEntity<List<WarehouseMemberDto>> addWarehouseMember(
         @PathVariable Long id,
-        @RequestBody AddWarehouseMemberRequest body
+        @RequestBody @Valid AddWarehouseMemberRequest body
     ) {
         return ResponseEntity.ok(warehouseMemberService.addMember(id, body));
     }
@@ -80,7 +81,7 @@ public class WarehouseController {
     @PutMapping("/{id}/contact")
     public ResponseEntity<Warehouse> updateWarehouseContact(
         @PathVariable Long id,
-        @RequestBody WarehouseContactUpdateRequest req
+        @RequestBody @Valid WarehouseContactUpdateRequest req
     ) {
         return ResponseEntity.ok(warehouseService.updateWarehouseContact(id, req));
     }

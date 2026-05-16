@@ -18,6 +18,13 @@ export function getAxiosErrorMessage(error: unknown, fallback: string): string {
     if (typeof data === 'string' && data.trim()) return data.trim();
     if (data && typeof data === 'object') {
       const o = data as Record<string, unknown>;
+      // Xử lý validation errors từ GlobalExceptionHandler (mảng errors[])
+      if (Array.isArray(o.errors) && o.errors.length > 0) {
+        const msgs = (o.errors as { field?: string; message?: string }[])
+          .map((e) => e.message ?? `${e.field ?? 'field'} không hợp lệ`)
+          .filter(Boolean);
+        if (msgs.length > 0) return msgs.join('\n');
+      }
       if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
       if (typeof o.detail === 'string' && o.detail.trim()) return o.detail.trim();
     }

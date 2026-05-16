@@ -28,4 +28,13 @@ public class TransactionsController {
         return ResponseEntity.ok(transactionsService.getTransactions(productId, warehouseId, pageable));
     }
 
+    @GetMapping("/stats")
+    public ResponseEntity<com.example.warehousemanager.dto.DailyStatsDto.Response> getMonthlyStats(
+        @RequestParam Long warehouseId,
+        @RequestParam int year,
+        @RequestParam int month
+    ) {
+        return ResponseEntity.ok(transactionsService.getMonthlyStats(warehouseId, year, month));
+    }
+
 }

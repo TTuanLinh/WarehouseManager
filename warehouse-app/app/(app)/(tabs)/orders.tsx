@@ -1,16 +1,9 @@
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+  ActivityIndicator, FlatList, Modal, Pressable,
+  RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -26,34 +19,26 @@ import type { MarketplaceListing, Order, UserBrief, Warehouse } from '@/src/type
 
 type CartLine = MarketplaceListing & { quantity: number };
 type RoleTab = 'buyer' | 'seller';
+type MainTab = 'list' | 'create';
 
-/** QR dự phòng khi người bán chưa upload ảnh QR ngân hàng (JSON: mã đơn + số tiền). */
-function orderPaymentQrPayload(order: Order): string {
-  return JSON.stringify({
-    kind: 'WAREHOUSE_ORDER_PAY',
-    orderId: order.id,
-    amountVnd: order.totalAmount,
-    payTo: order.sellerUsername,
-  });
-}
 
 function statusLabel(status: Order['status']) {
-  switch (status) {
-    case 'PENDING_SELLER_CONFIRM':
-      return 'Chờ người bán xác nhận';
-    case 'IN_TRANSIT':
-      return 'Đang giao hàng';
-    case 'AWAITING_PAYMENT':
-      return 'Chờ thanh toán';
-    case 'COMPLETED':
-      return 'Thành công';
-    case 'REJECTED':
-      return 'Đã từ chối';
-    case 'CANCELLED':
-      return 'Đã hủy';
-    default:
-      return status;
-  }
+  const map: Record<string, string> = {
+    PENDING_SELLER_CONFIRM: 'Chờ xác nhận',
+    IN_TRANSIT: 'Đang giao',
+    AWAITING_PAYMENT: 'Chờ thanh toán',
+    COMPLETED: 'Thành công',
+    REJECTED: 'Từ chối',
+    CANCELLED: 'Đã hủy',
+  };
+  return map[status] ?? status;
+}
+
+function statusColor(status: Order['status']) {
+  if (status === 'COMPLETED') return '#34d399';
+  if (status === 'REJECTED' || status === 'CANCELLED') return '#f87171';
+  if (status === 'AWAITING_PAYMENT') return '#fbbf24';
+  return '#38bdf8';
 }
 
 export default function OrdersScreen() {
@@ -61,8 +46,9 @@ export default function OrdersScreen() {
   const colorScheme = useColorScheme();
   const dark = colorScheme === 'dark';
   const theme = Colors[colorScheme ?? 'light'];
-  const styles = useMemo(() => makeStyles(dark), [dark]);
+  const s = useMemo(() => makeStyles(dark), [dark]);
 
+  const [mainTab, setMainTab] = useState<MainTab>('list');
   const [role, setRole] = useState<RoleTab>('buyer');
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -70,6 +56,7 @@ export default function OrdersScreen() {
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [myWarehouses, setMyWarehouses] = useState<Warehouse[]>([]);
 
+  // Create order state
   const [sellerQuery, setSellerQuery] = useState('');
   const [sellerResults, setSellerResults] = useState<UserBrief[]>([]);
   const [selectedSeller, setSelectedSeller] = useState<UserBrief | null>(null);
@@ -79,488 +66,379 @@ export default function OrdersScreen() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [listingQtyMap, setListingQtyMap] = useState<Record<string, string>>({});
   const [chooseWarehouseOpen, setChooseWarehouseOpen] = useState(false);
-  const [selectedDestinationWarehouseId, setSelectedDestinationWarehouseId] = useState<number | null>(null);
+  const [selectedDestWarehouseId, setSelectedDestWarehouseId] = useState<number | null>(null);
 
   const loadOrders = useCallback(async () => {
-    if (session == null) {
-      setOrders([]);
-      setOrdersLoading(false);
-      return;
-    }
+    if (!session) { setOrders([]); setOrdersLoading(false); return; }
     const [{ data: dataOrders }, { data: whs }] = await Promise.all([
-      orderApi.getOrders(role),
-      warehouseApi.getWarehouses(),
+      orderApi.getOrders(role), warehouseApi.getWarehouses(),
     ]);
     setOrders(dataOrders ?? []);
     setMyWarehouses(whs ?? []);
   }, [role, session]);
 
-  useFocusEffect(
-    useCallback(() => {
-      setOrdersLoading(true);
-      loadOrders()
-        .catch(() => setOrders([]))
-        .finally(() => setOrdersLoading(false));
-    }, [loadOrders])
-  );
+  useFocusEffect(useCallback(() => {
+    setOrdersLoading(true);
+    loadOrders().catch(() => setOrders([])).finally(() => setOrdersLoading(false));
+  }, [loadOrders]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await loadOrders();
-    } finally {
-      setRefreshing(false);
-    }
+    try { await loadOrders(); } finally { setRefreshing(false); }
   }, [loadOrders]);
 
   const runSearchSeller = async () => {
-    const q = sellerQuery.trim();
-    if (q.length < 2) return;
-    try {
-      const { data } = await userApi.searchUsers(q);
-      setSellerResults(data ?? []);
-    } catch {
-      setSellerResults([]);
-    }
+    if (sellerQuery.trim().length < 2) return;
+    try { const { data } = await userApi.searchUsers(sellerQuery.trim()); setSellerResults(data ?? []); }
+    catch { setSellerResults([]); }
   };
 
   const loadListings = async (seller: UserBrief, query?: string) => {
     setListingsLoading(true);
-    try {
-      const { data } = await marketplaceApi.getSellerListings(seller.id, query);
-      setListings(data ?? []);
-    } catch {
-      setListings([]);
-    } finally {
-      setListingsLoading(false);
-    }
+    try { const { data } = await marketplaceApi.getSellerListings(seller.id, query); setListings(data ?? []); }
+    catch { setListings([]); }
+    finally { setListingsLoading(false); }
   };
 
   const addToCart = (listing: MarketplaceListing, qtyRaw: string) => {
     const qty = parseInt(qtyRaw.replace(/\s/g, ''), 10);
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    if (qty > listing.availableQuantity) return;
-    setCart((prev) => {
-      const idx = prev.findIndex(
-        (i) => i.productId === listing.productId && i.warehouseId === listing.warehouseId
-      );
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], quantity: qty };
-        return next;
-      }
+    if (!Number.isFinite(qty) || qty <= 0 || qty > listing.availableQuantity) return;
+    setCart(prev => {
+      const idx = prev.findIndex(i => i.productId === listing.productId && i.warehouseId === listing.warehouseId);
+      if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], quantity: qty }; return next; }
       return [...prev, { ...listing, quantity: qty }];
     });
   };
 
-  const removeFromCart = (line: CartLine) => {
-    setCart((prev) =>
-      prev.filter((i) => !(i.productId === line.productId && i.warehouseId === line.warehouseId))
-    );
-  };
-
   const submitOrder = async () => {
-    if (selectedSeller == null || cart.length === 0 || selectedDestinationWarehouseId == null) return;
+    if (!selectedSeller || cart.length === 0 || !selectedDestWarehouseId) return;
     try {
       await orderApi.createOrder({
         sellerId: selectedSeller.id,
-        destinationWarehouseId: selectedDestinationWarehouseId,
-        items: cart.map((c) => ({
-          warehouseId: c.warehouseId,
-          productId: c.productId,
-          quantity: c.quantity,
-        })),
+        destinationWarehouseId: selectedDestWarehouseId,
+        items: cart.map(c => ({ warehouseId: c.warehouseId, productId: c.productId, quantity: c.quantity })),
       });
-      setCart([]);
-      setSelectedDestinationWarehouseId(null);
-      setChooseWarehouseOpen(false);
+      setCart([]); setSelectedDestWarehouseId(null); setChooseWarehouseOpen(false);
+      setMainTab('list');
       await loadOrders();
-    } catch (e) {
-      alert(getAxiosErrorMessage(e, 'Tạo đơn thất bại.'));
-    }
+    } catch (e) { alert(getAxiosErrorMessage(e, 'Tạo đơn thất bại.')); }
   };
 
-  const runSellerConfirm = async (orderId: number) => {
+  const runAction = async (fn: () => Promise<void>, orderId: number) => {
     setBusyOrderId(orderId);
-    try {
-      await orderApi.sellerConfirmOrder(orderId);
-      await loadOrders();
-    } catch (e) {
-      alert(getAxiosErrorMessage(e, 'Xác nhận đơn thất bại.'));
-    } finally {
-      setBusyOrderId(null);
-    }
+    try { await fn(); await loadOrders(); }
+    catch (e) { alert(getAxiosErrorMessage(e, 'Thao tác thất bại.')); }
+    finally { setBusyOrderId(null); }
   };
 
-  const runBuyerReceived = async (orderId: number) => {
-    setBusyOrderId(orderId);
-    try {
-      await orderApi.buyerConfirmReceived(orderId);
-      await loadOrders();
-    } catch (e) {
-      alert(getAxiosErrorMessage(e, 'Xác nhận nhận hàng thất bại.'));
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  const runSellerConfirmPayment = async (orderId: number) => {
-    setBusyOrderId(orderId);
-    try {
-      await orderApi.sellerConfirmPayment(orderId);
-      await loadOrders();
-    } catch (e) {
-      alert(getAxiosErrorMessage(e, 'Xác nhận thanh toán thất bại.'));
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  if (session == null) {
+  if (!session) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Chưa đăng nhập</Text>
-        <Text style={{ color: theme.icon, textAlign: 'center', paddingHorizontal: 24 }}>
-          Vào tab Cá nhân để đăng nhập và sử dụng chức năng đặt hàng giữa người dùng.
-        </Text>
+      <View style={[s.center, { backgroundColor: theme.background }]}>
+        <MaterialIcons name="lock-outline" size={48} color="#1e3a5f" style={{ marginBottom: 12 }} />
+        <Text style={[s.guestTitle, { color: theme.text }]}>Chưa đăng nhập</Text>
+        <Text style={[s.guestHint, { color: theme.icon }]}>Vào tab Cá nhân để đăng nhập.</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <View style={styles.roleSwitch}>
-        <Pressable
-          style={[styles.roleBtn, role === 'buyer' && { backgroundColor: theme.tint }]}
-          onPress={() => setRole('buyer')}>
-          <Text style={[styles.roleText, role === 'buyer' && styles.roleTextActive]}>Bên mua</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.roleBtn, role === 'seller' && { backgroundColor: theme.tint }]}
-          onPress={() => setRole('seller')}>
-          <Text style={[styles.roleText, role === 'seller' && styles.roleTextActive]}>Bên bán</Text>
-        </Pressable>
+    <View style={[s.root, { backgroundColor: theme.background }]}>
+      {/* ── Main top-tab bar ── */}
+      <View style={s.mainTabBar}>
+        {(['list', 'create'] as MainTab[]).map((t) => (
+          <Pressable key={t} style={[s.mainTabBtn, mainTab === t && s.mainTabBtnActive]} onPress={() => setMainTab(t)}>
+            <MaterialIcons
+              name={t === 'list' ? 'receipt-long' : 'add-shopping-cart'}
+              size={16}
+              color={mainTab === t ? '#38bdf8' : '#64748b'}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={[s.mainTabText, mainTab === t && s.mainTabTextActive]}>
+              {t === 'list' ? 'Danh sách đơn' : 'Tạo đơn mới'}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      {role === 'buyer' ? (
-        <ScrollView contentContainerStyle={styles.buyerPanel}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>1) Tìm người bán</Text>
-          <View style={styles.rowInline}>
-            <TextInput
-              style={[styles.input, { color: theme.text, borderColor: theme.icon, flex: 1, marginBottom: 0 }]}
-              value={sellerQuery}
-              onChangeText={setSellerQuery}
-              placeholder="Nhập username người bán..."
-              placeholderTextColor={theme.icon}
-            />
-            <Pressable style={[styles.primaryBtn, { backgroundColor: theme.tint }]} onPress={() => void runSearchSeller()}>
-              <Text style={styles.primaryBtnText}>Tìm</Text>
-            </Pressable>
-          </View>
-
-          <FlatList
-            data={sellerResults}
-            keyExtractor={(u) => String(u.id)}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <Pressable
-                style={[styles.pickRow, selectedSeller?.id === item.id && { backgroundColor: dark ? '#334155' : '#e2e8f0' }]}
-                onPress={() => {
-                  setSelectedSeller(item);
-                  void loadListings(item);
-                }}>
-                <Text style={{ color: theme.text, fontWeight: selectedSeller?.id === item.id ? '700' : '400' }}>
-                  {item.username}
+      {/* ══════════════ LIST PANEL ══════════════ */}
+      {mainTab === 'list' && (
+        <View style={{ flex: 1 }}>
+          {/* Role toggle */}
+          <View style={s.roleBar}>
+            {(['buyer', 'seller'] as RoleTab[]).map((r) => (
+              <Pressable key={r} style={[s.roleBtn, role === r && s.roleBtnActive]} onPress={() => setRole(r)}>
+                <Text style={[s.roleText, role === r && s.roleTextActive]}>
+                  {r === 'buyer' ? 'Bên mua' : 'Bên bán'}
                 </Text>
               </Pressable>
-            )}
-          />
-
-          {selectedSeller ? (
-            <>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                2) Hàng đang bán của {selectedSeller.username}
-              </Text>
-              <View style={styles.rowInline}>
-                <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.icon, flex: 1, marginBottom: 0 }]}
-                  value={listingQuery}
-                  onChangeText={setListingQuery}
-                  placeholder="Lọc theo tên/SKU..."
-                  placeholderTextColor={theme.icon}
-                />
-                <Pressable
-                  style={[styles.primaryBtn, { backgroundColor: theme.tint }]}
-                  onPress={() => void loadListings(selectedSeller, listingQuery)}>
-                  <Text style={styles.primaryBtnText}>Lọc</Text>
-                </Pressable>
-              </View>
-              {listingsLoading ? <ActivityIndicator color={theme.tint} style={{ marginVertical: 12 }} /> : null}
-              <FlatList
-                data={listings}
-                keyExtractor={(i) => `${i.warehouseId}-${i.productId}`}
-                scrollEnabled={false}
-                renderItem={({ item }) => {
-                  const rowKey = `${item.warehouseId}-${item.productId}`;
-                  return (
-                    <View style={styles.card}>
-                      <Text style={[styles.cardTitle, { color: theme.text }]}>{item.productName}</Text>
-                      <Text style={{ color: theme.icon }}>
-                        SKU {item.sku} · Kho {item.warehouseName} · Còn {item.availableQuantity}
-                      </Text>
-                      <Text style={{ color: theme.icon, fontSize: 12 }}>
-                        Địa chỉ kho: {item.warehouseAddress || 'Chưa có địa chỉ'}
-                      </Text>
-                      <Text style={{ color: theme.text, marginTop: 4 }}>Giá: {item.unitPrice.toLocaleString('vi-VN')} đ</Text>
-                      <View style={styles.rowInline}>
-                        <TextInput
-                          style={[styles.input, { color: theme.text, borderColor: theme.icon, flex: 1, marginBottom: 0 }]}
-                          placeholder="SL"
-                          placeholderTextColor={theme.icon}
-                          keyboardType="number-pad"
-                          value={listingQtyMap[rowKey] ?? ''}
-                          onChangeText={(v) => setListingQtyMap((prev) => ({ ...prev, [rowKey]: v }))}
-                        />
-                        <Pressable
-                          style={[styles.primaryBtn, { backgroundColor: theme.tint }]}
-                          onPress={() => addToCart(item, listingQtyMap[rowKey] ?? '')}>
-                          <Text style={styles.primaryBtnText}>Thêm</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                }}
-              />
-            </>
-          ) : null}
-
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>3) Giỏ hàng</Text>
-          <FlatList
-            data={cart}
-            keyExtractor={(i) => `${i.warehouseId}-${i.productId}`}
-            scrollEnabled={false}
-            ListEmptyComponent={<Text style={{ color: theme.icon }}>Chưa có sản phẩm trong giỏ.</Text>}
-            renderItem={({ item }) => (
-              <View style={styles.cartRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontWeight: '700' }}>
-                    {item.productName} x {item.quantity}
-                  </Text>
-                  <Text style={{ color: theme.icon, fontSize: 12 }}>
-                    Kho {item.warehouseName} · {(item.quantity * item.unitPrice).toLocaleString('vi-VN')} đ
-                  </Text>
+            ))}
+          </View>
+          {ordersLoading ? (
+            <ActivityIndicator color="#38bdf8" style={{ marginTop: 32 }} />
+          ) : (
+            <FlatList
+              data={orders}
+              keyExtractor={(o) => String(o.id)}
+              contentContainerStyle={s.listPad}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38bdf8" />}
+              ListEmptyComponent={
+                <View style={s.emptyWrap}>
+                  <MaterialIcons name="inbox" size={40} color="#1e3a5f" />
+                  <Text style={s.emptyText}>Chưa có đơn hàng nào.</Text>
                 </View>
-                <Pressable onPress={() => removeFromCart(item)}>
-                  <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xóa</Text>
+              }
+              renderItem={({ item }) => (
+                <View style={s.orderCard}>
+                  <View style={s.orderHeader}>
+                    <Text style={s.orderId}>Đơn #{item.id}</Text>
+                    <View style={[s.statusBadge, { borderColor: statusColor(item.status) }]}>
+                      <Text style={[s.statusText, { color: statusColor(item.status) }]}>{statusLabel(item.status)}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.orderMeta}>👤 Mua: {item.buyerUsername} · Bán: {item.sellerUsername}</Text>
+                  <Text style={s.orderMeta}>📦 Kho nhận: {item.destinationWarehouseName || `#${item.destinationWarehouseId}`}</Text>
+                  {item.items.map((it) => (
+                    <Text key={it.id} style={s.orderItem}>· {it.productName} × {it.quantity}</Text>
+                  ))}
+                  <Text style={s.orderTotal}>{item.totalAmount.toLocaleString('vi-VN')} đ</Text>
+
+                  {role === 'seller' && item.status === 'PENDING_SELLER_CONFIRM' && (
+                    <Pressable style={s.actionBtn} disabled={busyOrderId === item.id}
+                      onPress={() => runAction(async () => { await orderApi.sellerConfirmOrder(item.id); }, item.id)}>
+                      <Text style={s.actionBtnText}>{busyOrderId === item.id ? '…' : '✓ Xác nhận & gửi hàng'}</Text>
+                    </Pressable>
+                  )}
+                  {role === 'buyer' && item.status === 'IN_TRANSIT' && (
+                    <Pressable style={[s.actionBtn, { backgroundColor: '#052e16', borderColor: '#34d399' }]}
+                      disabled={busyOrderId === item.id}
+                      onPress={() => runAction(async () => { await orderApi.buyerConfirmReceived(item.id); }, item.id)}>
+                      <Text style={[s.actionBtnText, { color: '#34d399' }]}>{busyOrderId === item.id ? '…' : '✓ Đã nhận hàng'}</Text>
+                    </Pressable>
+                  )}
+                  {role === 'buyer' && item.status === 'AWAITING_PAYMENT' && (
+                    <View style={s.qrBlock}>
+                      <Text style={s.qrTitle}>Thanh toán — {item.totalAmount.toLocaleString('vi-VN')} đ</Text>
+                      {item.sellerBankQrPayload?.trim() ? (
+                        <View style={s.qrWrap}>
+                          <QRCode
+                            value={item.sellerBankQrPayload.trim()}
+                            size={176} color="#0f172a" backgroundColor="#ffffff"
+                          />
+                        </View>
+                      ) : (
+                        <View style={{ backgroundColor: '#422006', padding: 12, borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#7c2d12' }}>
+                          <Text style={{ color: '#fbbf24', fontSize: 13, textAlign: 'center' }}>
+                            <MaterialIcons name="warning" size={14} /> Người bán chưa cấu hình mã QR ngân hàng. Vui lòng liên hệ người bán để thanh toán.
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {role === 'seller' && item.status === 'AWAITING_PAYMENT' && (
+                    <Pressable style={[s.actionBtn, { backgroundColor: '#052e16', borderColor: '#34d399' }]}
+                      disabled={busyOrderId === item.id}
+                      onPress={() => runAction(async () => { await orderApi.sellerConfirmPayment(item.id); }, item.id)}>
+                      <Text style={[s.actionBtnText, { color: '#34d399' }]}>{busyOrderId === item.id ? '…' : '✓ Đã nhận tiền'}</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            />
+          )}
+        </View>
+      )}
+
+      {/* ══════════════ CREATE PANEL ══════════════ */}
+      {mainTab === 'create' && (
+        <ScrollView contentContainerStyle={s.createPad} keyboardShouldPersistTaps="handled">
+          {/* Step 1 */}
+          <Text style={s.stepTitle}><MaterialIcons name="person-search" size={15} /> Tìm người bán</Text>
+          <View style={s.searchRow}>
+            <TextInput
+              style={[s.searchInput, { color: '#f1f5f9' }]} placeholderTextColor="#475569" autoCapitalize="none"
+              value={sellerQuery} onChangeText={setSellerQuery}
+              placeholder="Nhập username người bán…"
+            />
+            <Pressable style={s.searchBtn} onPress={() => void runSearchSeller()}>
+              <MaterialIcons name="search" size={20} color="#0b1a2b" />
+            </Pressable>
+          </View>
+          {sellerResults.map(u => (
+            <Pressable key={u.id} style={[s.pickRow, selectedSeller?.id === u.id && s.pickRowActive]}
+              onPress={() => { setSelectedSeller(u); void loadListings(u); }}>
+              <MaterialIcons name="person" size={16} color={selectedSeller?.id === u.id ? '#38bdf8' : '#64748b'} style={{ marginRight: 8 }} />
+              <Text style={[s.pickText, selectedSeller?.id === u.id && { color: '#38bdf8', fontWeight: '700' }]}>{u.username}</Text>
+            </Pressable>
+          ))}
+
+          {/* Step 2 */}
+          {selectedSeller && (
+            <>
+              <Text style={[s.stepTitle, { marginTop: 16 }]}><MaterialIcons name="storefront" size={15} /> Hàng của {selectedSeller.username}</Text>
+              <View style={s.searchRow}>
+                <TextInput style={[s.searchInput, { color: '#f1f5f9' }]} placeholderTextColor="#475569" value={listingQuery}
+                  onChangeText={setListingQuery} placeholder="Lọc sản phẩm…" />
+                <Pressable style={s.searchBtn} onPress={() => void loadListings(selectedSeller, listingQuery)}>
+                  <MaterialIcons name="filter-list" size={20} color="#0b1a2b" />
                 </Pressable>
               </View>
-            )}
-          />
-          <Pressable
-            style={[styles.primaryBtn, { backgroundColor: theme.tint, marginTop: 8, alignSelf: 'flex-start' }]}
-            onPress={() => {
-              if (myWarehouses.length === 0) {
-                alert('Bạn chưa có kho nhận hàng. Hãy tạo kho trước.');
-                return;
-              }
-              setSelectedDestinationWarehouseId(myWarehouses[0]?.id ?? null);
+              {listingsLoading && <ActivityIndicator color="#38bdf8" style={{ marginVertical: 8 }} />}
+              {listings.map(item => {
+                const key = `${item.warehouseId}-${item.productId}`;
+                return (
+                  <View key={key} style={s.listingCard}>
+                    <Text style={s.listingName}>{item.productName}</Text>
+                    <Text style={s.listingMeta}>SKU {item.sku} · Kho {item.warehouseName} · Còn {item.availableQuantity}</Text>
+                    <Text style={s.listingPrice}>{item.unitPrice.toLocaleString('vi-VN')} đ</Text>
+                    <View style={s.searchRow}>
+                      <TextInput style={[s.searchInput, { flex: 1, color: '#f1f5f9' }]} placeholderTextColor="#475569"
+                        keyboardType="number-pad" placeholder="Số lượng"
+                        value={listingQtyMap[key] ?? ''} onChangeText={v => setListingQtyMap(p => ({ ...p, [key]: v }))} />
+                      <Pressable style={s.searchBtn} onPress={() => addToCart(item, listingQtyMap[key] ?? '')}>
+                        <MaterialIcons name="add-shopping-cart" size={20} color="#0b1a2b" />
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
+          )}
+
+          {/* Step 3 – Cart */}
+          <Text style={[s.stepTitle, { marginTop: 16 }]}><MaterialIcons name="shopping-cart" size={15} /> Giỏ hàng ({cart.length})</Text>
+          {cart.length === 0
+            ? <Text style={s.emptyText}>Chưa có sản phẩm trong giỏ.</Text>
+            : cart.map(item => (
+              <View key={`${item.warehouseId}-${item.productId}`} style={s.cartRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cartName}>{item.productName} × {item.quantity}</Text>
+                  <Text style={s.cartMeta}>{(item.quantity * item.unitPrice).toLocaleString('vi-VN')} đ · Kho {item.warehouseName}</Text>
+                </View>
+                <Pressable onPress={() => setCart(p => p.filter(i => !(i.productId === item.productId && i.warehouseId === item.warehouseId)))}>
+                  <MaterialIcons name="close" size={20} color="#f87171" />
+                </Pressable>
+              </View>
+            ))
+          }
+          {cart.length > 0 && (
+            <Pressable style={s.orderSubmitBtn} onPress={() => {
+              const validWarehouses = myWarehouses.filter(w => !cart.some(c => c.warehouseId === w.id));
+              if (!validWarehouses.length) { alert('Không có kho nhận nào hợp lệ. Các kho của bạn đang trùng với kho nguồn của sản phẩm trong giỏ.'); return; }
+              setSelectedDestWarehouseId(validWarehouses[0]?.id ?? null);
               setChooseWarehouseOpen(true);
             }}>
-            <Text style={styles.primaryBtnText}>Đặt hàng</Text>
-          </Pressable>
+              <MaterialIcons name="shopping-bag" size={18} color="#0b1a2b" style={{ marginRight: 8 }} />
+              <Text style={s.orderSubmitText}>Đặt hàng</Text>
+            </Pressable>
+          )}
         </ScrollView>
-      ) : null}
+      )}
 
-      <Modal
-        visible={chooseWarehouseOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setChooseWarehouseOpen(false)}>
-        <View style={styles.modalWrap}>
-          <Pressable style={styles.backdrop} onPress={() => setChooseWarehouseOpen(false)} />
-          <View style={[styles.card, { backgroundColor: dark ? '#1e293b' : '#fff', marginHorizontal: 24 }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Chọn kho nhận hàng</Text>
-            <FlatList
-              data={myWarehouses}
-              keyExtractor={(w) => String(w.id)}
-              style={{ maxHeight: 280 }}
-              renderItem={({ item }) => {
-                const selected = selectedDestinationWarehouseId === item.id;
-                return (
-                  <Pressable
-                    style={[styles.pickRow, selected && { backgroundColor: dark ? '#334155' : '#e2e8f0' }]}
-                    onPress={() => setSelectedDestinationWarehouseId(item.id)}>
-                    <Text style={{ color: theme.text, fontWeight: selected ? '700' : '400' }}>{item.name}</Text>
-                    <Text style={{ color: theme.icon, fontSize: 12 }}>
-                      {item.address || 'Chưa có địa chỉ'} · {item.phone || 'Chưa có SĐT'}
-                    </Text>
-                  </Pressable>
-                );
-              }}
-            />
-            <View style={styles.rowInline}>
-              <Pressable onPress={() => setChooseWarehouseOpen(false)}>
-                <Text style={{ color: theme.text }}>Hủy</Text>
+      {/* ── Choose warehouse modal ── */}
+      <Modal visible={chooseWarehouseOpen} transparent animationType="fade" onRequestClose={() => setChooseWarehouseOpen(false)}>
+        <View style={s.modalWrap}>
+          <Pressable style={s.backdrop} onPress={() => setChooseWarehouseOpen(false)} />
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Chọn kho nhận hàng</Text>
+            {(() => {
+              const validWarehouses = myWarehouses.filter(w => !cart.some(c => c.warehouseId === w.id));
+              return (
+                <FlatList data={validWarehouses} keyExtractor={w => String(w.id)} style={{ maxHeight: 260 }}
+                  renderItem={({ item }) => {
+                    const sel = selectedDestWarehouseId === item.id;
+                    return (
+                      <Pressable style={[s.pickRow, sel && s.pickRowActive]} onPress={() => setSelectedDestWarehouseId(item.id)}>
+                        <MaterialIcons name="store" size={16} color={sel ? '#38bdf8' : '#64748b'} style={{ marginRight: 8 }} />
+                        <View>
+                          <Text style={[s.pickText, sel && { color: '#38bdf8', fontWeight: '700' }]}>{item.name}</Text>
+                          <Text style={s.listingMeta}>{item.address || 'Chưa có địa chỉ'}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  }}
+                />
+              );
+            })()}
+            <View style={s.modalActions}>
+              <Pressable onPress={() => setChooseWarehouseOpen(false)} style={s.modalCancelBtn}>
+                <Text style={{ color: '#94a3b8' }}>Hủy</Text>
               </Pressable>
-              <Pressable
-                style={[styles.primaryBtn, { backgroundColor: theme.tint }]}
-                onPress={() => void submitOrder()}>
-                <Text style={styles.primaryBtnText}>Xác nhận đặt hàng</Text>
+              <Pressable style={s.orderSubmitBtn} onPress={() => void submitOrder()}>
+                <Text style={s.orderSubmitText}>Xác nhận đặt hàng</Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
-
-      <Text style={[styles.sectionTitle, { color: theme.text, marginHorizontal: 16, marginTop: 6 }]}>
-        Danh sách đơn ({role === 'buyer' ? 'Bên mua' : 'Bên bán'})
-      </Text>
-      {ordersLoading ? <ActivityIndicator color={theme.tint} style={{ marginTop: 16 }} /> : null}
-      <FlatList
-        data={orders}
-        keyExtractor={(o) => String(o.id)}
-        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListEmptyComponent={<Text style={{ color: theme.icon }}>Chưa có đơn hàng nào.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Đơn #{item.id}</Text>
-            <Text style={{ color: theme.icon }}>
-              Mua: {item.buyerUsername} · Bán: {item.sellerUsername}
-            </Text>
-            <Text style={{ color: theme.text, marginTop: 4 }}>Trạng thái: {statusLabel(item.status)}</Text>
-            <Text style={{ color: theme.text }}>Tổng: {item.totalAmount.toLocaleString('vi-VN')} đ</Text>
-            <Text style={{ color: theme.icon, fontSize: 12 }}>
-              Kho nhận: {item.destinationWarehouseName || `#${item.destinationWarehouseId}`}
-            </Text>
-            <Text style={{ color: theme.icon, fontSize: 12 }}>
-              Địa chỉ: {item.recipientAddress || 'Chưa có'} · SĐT: {item.recipientPhone || 'Chưa có'}
-            </Text>
-            {item.items.map((it) => (
-              <Text key={it.id} style={{ color: theme.icon, fontSize: 12 }}>
-                - {it.productName} x {it.quantity} (kho nguồn {it.sourceWarehouseId})
-              </Text>
-            ))}
-
-            {role === 'seller' && item.status === 'PENDING_SELLER_CONFIRM' ? (
-              <Pressable
-                style={[styles.primaryBtn, { backgroundColor: theme.tint, marginTop: 8, alignSelf: 'flex-start' }]}
-                disabled={busyOrderId === item.id}
-                onPress={() => void runSellerConfirm(item.id)}>
-                <Text style={styles.primaryBtnText}>{busyOrderId === item.id ? '...' : 'Xác nhận & gửi hàng'}</Text>
-              </Pressable>
-            ) : null}
-
-            {role === 'buyer' && item.status === 'IN_TRANSIT' ? (
-              <Pressable
-                style={[styles.primaryBtn, { backgroundColor: '#16a34a', marginTop: 8, alignSelf: 'flex-start' }]}
-                disabled={busyOrderId === item.id}
-                onPress={() => void runBuyerReceived(item.id)}>
-                <Text style={styles.primaryBtnText}>{busyOrderId === item.id ? '...' : 'Đã nhận hàng'}</Text>
-              </Pressable>
-            ) : null}
-
-            {role === 'buyer' && item.status === 'AWAITING_PAYMENT' ? (
-              <View style={styles.qrPayBlock}>
-                <Text style={[styles.qrPayTitle, { color: theme.text }]}>Thanh toán đơn hàng</Text>
-                <Text style={{ color: theme.icon, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>
-                  Số tiền: {item.totalAmount.toLocaleString('vi-VN')} đ. Mã QR ẩn sau khi người bán xác nhận đã nhận
-                  tiền.
-                </Text>
-                <View style={styles.qrWrap}>
-                  <QRCode
-                    value={
-                      item.sellerBankQrPayload && item.sellerBankQrPayload.trim().length > 0
-                        ? item.sellerBankQrPayload.trim()
-                        : orderPaymentQrPayload(item)
-                    }
-                    size={192}
-                    color="#0f172a"
-                    backgroundColor="#ffffff"
-                  />
-                </View>
-                <Text style={{ color: theme.icon, fontSize: 11, marginTop: 6, textAlign: 'center' }}>
-                  {item.sellerBankQrPayload && item.sellerBankQrPayload.trim().length > 0
-                    ? 'Mã QR ngân hàng của người bán (đã tải lên ở tab Cá nhân).'
-                    : 'Người bán chưa cấu hình QR ngân hàng — đang hiển thị mã dự phòng (thông tin đơn + số tiền).'}
-                </Text>
-              </View>
-            ) : null}
-
-            {role === 'seller' && item.status === 'AWAITING_PAYMENT' ? (
-              <Pressable
-                style={[styles.primaryBtn, { backgroundColor: '#16a34a', marginTop: 8, alignSelf: 'flex-start' }]}
-                disabled={busyOrderId === item.id}
-                onPress={() => void runSellerConfirmPayment(item.id)}>
-                <Text style={styles.primaryBtnText}>{busyOrderId === item.id ? '...' : 'Xác nhận đã nhận tiền'}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        )}
-      />
     </View>
   );
 }
 
 function makeStyles(dark: boolean) {
+  const bg = dark ? '#080f1c' : '#f8fafc';
+  const surface = dark ? '#0d1b2e' : '#ffffff';
+  const border = dark ? '#1e3a5f' : '#cbd5e1';
+  const text = dark ? '#f1f5f9' : '#0f172a';
+  const muted = dark ? '#64748b' : '#94a3b8';
   return StyleSheet.create({
     root: { flex: 1 },
-    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    roleSwitch: { flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 8 },
-    roleBtn: {
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 10,
-      backgroundColor: dark ? '#1e293b' : '#e2e8f0',
-    },
-    roleText: { fontWeight: '700' },
-    roleTextActive: { color: '#fff' },
-    buyerPanel: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-    sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6, marginTop: 4 },
-    rowInline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-    input: {
-      borderWidth: 1,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 15,
-      marginBottom: 10,
-    },
-    primaryBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
-    primaryBtnText: { color: '#fff', fontWeight: '700' },
-    pickRow: {
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      marginBottom: 6,
-      backgroundColor: dark ? '#1e293b' : '#f1f5f9',
-    },
-    card: {
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 10,
-      backgroundColor: dark ? '#1e293b' : '#f1f5f9',
-    },
-    cardTitle: { fontWeight: '700', fontSize: 15, marginBottom: 4 },
-    cartRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      borderRadius: 10,
-      padding: 10,
-      marginBottom: 6,
-      backgroundColor: dark ? '#1e293b' : '#f1f5f9',
-    },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+    guestTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
+    guestHint: { fontSize: 14, textAlign: 'center' },
+    // Main tabs
+    mainTabBar: { flexDirection: 'row', backgroundColor: dark ? '#0a1525' : '#f1f5f9', borderBottomWidth: 1, borderBottomColor: border },
+    mainTabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+    mainTabBtnActive: { borderBottomWidth: 2, borderBottomColor: '#38bdf8' },
+    mainTabText: { fontSize: 13, fontWeight: '600', color: muted },
+    mainTabTextActive: { color: '#38bdf8' },
+    // Role bar
+    roleBar: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, gap: 10 },
+    roleBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: dark ? '#0d1b2e' : '#e2e8f0', borderWidth: 1, borderColor: border },
+    roleBtnActive: { backgroundColor: dark ? '#0f2040' : '#dbeafe', borderColor: '#38bdf8' },
+    roleText: { fontSize: 13, fontWeight: '600', color: muted },
+    roleTextActive: { color: '#38bdf8' },
+    // List
+    listPad: { padding: 16, paddingBottom: 24 },
+    emptyWrap: { alignItems: 'center', marginTop: 48, gap: 8 },
+    emptyText: { fontSize: 14, color: muted, marginTop: 4 },
+    // Order card
+    orderCard: { backgroundColor: surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: border },
+    orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    orderId: { fontSize: 15, fontWeight: '700', color: text },
+    statusBadge: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+    statusText: { fontSize: 11, fontWeight: '700' },
+    orderMeta: { fontSize: 13, color: muted, marginBottom: 2 },
+    orderItem: { fontSize: 12, color: muted, marginLeft: 4 },
+    orderTotal: { fontSize: 16, fontWeight: '700', color: '#38bdf8', marginTop: 8 },
+    actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10, paddingVertical: 10, borderRadius: 12, backgroundColor: dark ? '#0f2040' : '#eff6ff', borderWidth: 1, borderColor: '#38bdf8' },
+    actionBtnText: { color: '#38bdf8', fontWeight: '700', fontSize: 14 },
+    qrBlock: { marginTop: 12, alignItems: 'center' },
+    qrTitle: { fontSize: 14, fontWeight: '700', color: '#fbbf24', marginBottom: 10 },
+    qrWrap: { padding: 12, borderRadius: 12, backgroundColor: '#fff' },
+    // Create panel
+    createPad: { padding: 16, paddingBottom: 40 },
+    stepTitle: { fontSize: 13, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
+    searchRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    searchInput: { flex: 1, backgroundColor: dark ? '#0a1525' : '#f1f5f9', borderWidth: 1.5, borderColor: border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14 },
+    searchBtn: { backgroundColor: '#38bdf8', borderRadius: 12, width: 44, alignItems: 'center', justifyContent: 'center' },
+    pickRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: surface, borderRadius: 12, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: border },
+    pickRowActive: { borderColor: '#38bdf8', backgroundColor: dark ? '#0f2040' : '#eff6ff' },
+    pickText: { fontSize: 14, color: text },
+    listingCard: { backgroundColor: surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: border },
+    listingName: { fontSize: 15, fontWeight: '700', color: text, marginBottom: 2 },
+    listingMeta: { fontSize: 12, color: muted, marginBottom: 4 },
+    listingPrice: { fontSize: 15, color: '#38bdf8', fontWeight: '700', marginBottom: 8 },
+    cartRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: surface, borderRadius: 12, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: border, gap: 8 },
+    cartName: { fontSize: 14, fontWeight: '600', color: text },
+    cartMeta: { fontSize: 12, color: muted, marginTop: 2 },
+    orderSubmitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#38bdf8', borderRadius: 14, paddingVertical: 13, marginTop: 12 },
+    orderSubmitText: { color: '#0b1a2b', fontWeight: '700', fontSize: 15 },
+    // Modal
     modalWrap: { flex: 1, justifyContent: 'center' },
-    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-    qrPayBlock: { marginTop: 12, alignItems: 'center', alignSelf: 'stretch' },
-    qrPayTitle: { fontWeight: '700', fontSize: 14, marginBottom: 4 },
-    qrWrap: {
-      padding: 12,
-      borderRadius: 12,
-      backgroundColor: '#fff',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
+    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+    modalCard: { margin: 24, backgroundColor: surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: border },
+    modalTitle: { fontSize: 17, fontWeight: '700', color: text, marginBottom: 12 },
+    modalActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 14 },
+    modalCancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
   });
 }

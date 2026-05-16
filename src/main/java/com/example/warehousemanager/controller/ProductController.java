@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import com.example.warehousemanager.service.ProductService;
 import com.example.warehousemanager.entity.Product;
 import com.example.warehousemanager.dto.ProductRequest;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,7 +21,7 @@ public class ProductController {
     private final ProductService productService;
 
     @PostMapping
-    public ResponseEntity<Product> createProduct(@RequestBody ProductRequest req) {
+    public ResponseEntity<Product> createProduct(@RequestBody @Valid ProductRequest req) {
         Product product = productService.createProduct(req);
         return ResponseEntity.ok(product);
     }
